@@ -2,6 +2,7 @@ import express from 'express';
 import { now } from './routes/now.js';
 import { weekends } from './routes/weekends.js';
 import { positions } from './routes/positions.js';
+import { stocks } from './routes/stocks.js';
 import { startIndexer } from './indexer.js';
 
 const app = express();
@@ -11,6 +12,7 @@ const wrap = (fn) => (req, res) => Promise.resolve().then(() => fn(req)).then((b
 });
 
 app.get('/api/now', wrap(() => now()));
+app.get('/api/stocks', wrap(() => stocks()));
 app.get('/api/positions/:wallet', wrap((req) => positions(req.params.wallet)));
 app.get('/api/weekends', wrap((req) => weekends({ symbol: req.query.symbol })));
 

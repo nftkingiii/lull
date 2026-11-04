@@ -112,3 +112,22 @@ export async function walletPositions(wallet) {
 }
 
 const toMarketStruct = (s) => ({ totalSupplyAssets: s[0], totalSupplyShares: s[1], totalBorrowAssets: s[2], totalBorrowShares: s[3], lastUpdate: s[4], fee: s[5] });
+
+/** Live USDG borrowed against each stock across its Morpho markets, read on-chain. */
+export async function stockExposure() {
+  const markets = (await stockMarkets()).filter((m) => m.loanSymbol === 'USDG');
+  const states = await client.multicall({
+    contracts: markets.map((m) => ({ address: MORPHO_BLUE, abi: blueAbi, functionName: 'market', args: [m.id] })),
+    allowFailure: false,
+  });
+  const by = new Map();
+  markets.forEach((m, i) => {
+    const borrowed = Number(states[i][2]) / 10 ** m.loanDecimals;
+    const e = by.get(m.symbol) ?? { symbol: m.symbol, borrowed: 0, markets: 0, main: null };
+    e.borrowed += borrowed;
+    if (borrowed > 0) e.markets++;
+    if (!e.main || borrowed > e.main.borrowed) e.main = { marketId: m.id, borrowed, lltv: Number(m.lltv) / 1e18 };
+    by.set(m.symbol, e);
+  });
+  return [...by.values()].map((e) => ({ symbol: e.symbol, borrowed: e.borrowed, marketsWithDebt: e.markets, lltv: e.main?.lltv ?? null, mainMarket: e.main?.marketId ?? null }));
+}

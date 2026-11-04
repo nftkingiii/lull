@@ -39,6 +39,8 @@ export function tokens() {
         symbol: String(a.tokenSymbol).toUpperCase(),
         address: a.deployments[0].contractAddress,
         decimals: a.tokenDecimals,
+        name: a.tokenName,
+        logoUrl: a.logoUrl,
         multiplier: Number(a.currentMultiplier ?? 1),
         tradingCapabilities: a.tradingCapabilities,
       }));
