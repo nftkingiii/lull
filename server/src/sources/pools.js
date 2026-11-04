@@ -24,7 +24,7 @@ export async function usdgPools(token, decimals) {
       cached(`t0:${pool}`, DAY, () => client.readContract({ address: pool, abi: poolAbi, functionName: 'token0' })),
     ]);
     const usdgHeld = Number(bal) / 10 ** USDG_DECIMALS;
-    return { pool, fee, usdgHeld, price: priceFromSqrt(slot0[0], token0, token, Number(decimals)) };
+    return { pool, fee, token0, usdgHeld, price: priceFromSqrt(slot0[0], token0, token, Number(decimals)) };
   }));
   // Empty pools report absurd prices, so they are flagged and never used for a price.
   return pools

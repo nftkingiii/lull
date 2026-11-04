@@ -14,3 +14,6 @@ export const FEE_TIERS = [100, 500, 3000, 10000];
 // Pools holding less USDG than this are treated as empty (they report absurd prices).
 export const MIN_POOL_USDG = Number(process.env.LULL_MIN_POOL_USDG ?? 100);
 export const FEED_DECIMALS = 8;
+
+// Replay covers every weekend since 1 Jul 2026 (UTC).
+export const HISTORY_START = Date.UTC(2026, 6, 1) / 1000;

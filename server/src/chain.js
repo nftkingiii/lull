@@ -13,7 +13,7 @@ export const robinhoodChain = defineChain({
 // deployed, and one aggregate eth_call carrying 100 reads passes. So: multicall-batch reads,
 // space out HTTP requests, back off on 429.
 export const MULTICALL3 = '0xcA11bde05977b3631167028862bE2a173976CA11';
-const MIN_GAP_MS = Number(process.env.LULL_RPC_GAP_MS ?? 250);
+const MIN_GAP_MS = Number(process.env.LULL_RPC_GAP_MS ?? 150);
 let nextSlot = 0;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function slot() {
