@@ -8,16 +8,14 @@ const ZERO = '0x0000000000000000000000000000000000000000';
 const DAY = 86_400_000;
 const usdg = getAddress(USDG);
 
-/** Every non-empty token/USDG pool, deepest (most USDG) first. */
-export async function usdgPools(token) {
+/** Every token/USDG pool, deepest (most USDG) first. `empty` pools must not be priced from. */
+export async function usdgPools(token, decimals) {
   const addrs = await cached(`pools:${token}`, DAY, async () => {
     const found = await Promise.all(FEE_TIERS.map((fee) =>
       client.readContract({ address: UNIV3_FACTORY, abi: factoryAbi, functionName: 'getPool', args: [token, usdg, fee] })
         .then((pool) => ({ fee, pool }))));
     return found.filter((p) => p.pool !== ZERO);
   });
-  const decimals = await cached(`dec:${token}`, DAY, () =>
-    client.readContract({ address: token, abi: erc20Abi, functionName: 'decimals' }));
 
   const pools = await Promise.all(addrs.map(async ({ fee, pool }) => {
     const [bal, slot0, token0] = await Promise.all([
@@ -28,8 +26,10 @@ export async function usdgPools(token) {
     const usdgHeld = Number(bal) / 10 ** USDG_DECIMALS;
     return { pool, fee, usdgHeld, price: priceFromSqrt(slot0[0], token0, token, Number(decimals)) };
   }));
-  // Empty pools report absurd prices, so they are dropped rather than shown.
-  return pools.filter((p) => p.usdgHeld >= MIN_POOL_USDG && p.price > 0).sort((a, b) => b.usdgHeld - a.usdgHeld);
+  // Empty pools report absurd prices, so they are flagged and never used for a price.
+  return pools
+    .map((p) => ({ ...p, empty: !(p.usdgHeld >= MIN_POOL_USDG && p.price > 0) }))
+    .sort((a, b) => b.usdgHeld - a.usdgHeld);
 }
 
 /** USDG per one whole stock token, from sqrtPriceX96. */

@@ -20,23 +20,25 @@ export function equityFeeds() {
   });
 }
 
-// Feed names look like "AAPL / USD"; docs.baseAsset is preferred when present.
-// UNVERIFIED: field names beyond docs.assetClass, marketHours and proxyAddress were not checked.
+// Feed docs.baseAsset equals the token symbol for 32 of 33 equity feeds (checked 4 Nov).
+// Known exceptions are listed here explicitly rather than fuzzy-matched.
+const FEED_ALIASES = { RHDELL: 'DELL' };
 function feedBaseSymbol(f) {
-  return String(f.docs?.baseAsset ?? String(f.name).split('/')[0]).trim().toUpperCase();
+  const base = String(f.docs.baseAsset).trim().toUpperCase();
+  return FEED_ALIASES[base] ?? base;
 }
 
 /** Robinhood tokenized assets, keyed by upper-case tokenSymbol. */
 export function tokens() {
   return cached('assets', HOUR, async () => {
     const body = await getJson(ASSETS_URL);
-    // UNVERIFIED: the envelope shape (bare array vs { results }) was not checked.
-    const list = Array.isArray(body) ? body : body.results ?? body.data ?? [];
-    return list
+    if (!Array.isArray(body?.assets)) throw new Error('assets API: unexpected response shape');
+    return body.assets
       .filter((a) => a?.deployments?.[0]?.contractAddress)
       .map((a) => ({
         symbol: String(a.tokenSymbol).toUpperCase(),
         address: a.deployments[0].contractAddress,
+        decimals: a.tokenDecimals,
         multiplier: Number(a.currentMultiplier ?? 1),
         tradingCapabilities: a.tradingCapabilities,
       }));
