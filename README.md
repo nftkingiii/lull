@@ -38,9 +38,10 @@ Behind an HTTPS proxy (e.g. a cloud sandbox), Node's fetch needs `NODE_USE_ENV_P
 - **RPC limits:** ~8–10 eth_calls/s (429 beyond; reads go through Multicall3, which is deployed);
   `eth_getLogs` single-value filters span ≤ 10M blocks, multi-value ≤ 100k, topic-only ≤ 30k; > 10,000
   matches is an error (not truncation) and busy ranges can time out — both are split and retried.
-  Logs carry a `blockTimestamp` field but it is always `0x0`, so weekend windows are cut by block
-  number (first block at/after the feed's close and reopen) and swap times for the hourly chart are
-  interpolated between exact 6-hourly block anchors (accurate to seconds; block rate ≈ 9.5–9.75/s).
+  Logs carry a `blockTimestamp` field but it is always `0x0`. Weekend windows are cut by block number
+  (first block whose header is at/after the feed's close and reopen), hourly buckets by the first block
+  of each hour, and the highest, lowest and last trades get their exact time from batched
+  `eth_getBlockByNumber` headers. No time is ever estimated from block numbers.
 - **Volume:** the busiest pools (NVDA, GOOGL 0.05%) see thousands of swaps per hour, so weekends are
   streamed into summaries (low/high/last/volume/hourly OHLC) rather than stored. Cold build ≈ 1 hour.
 - **Feeds:** `docs.baseAsset` is the token symbol except `RHDELL` → `DELL` (explicit alias).

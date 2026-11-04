@@ -6,6 +6,7 @@ import { MIN_POOL_USDG } from '../config.js';
 export const DECOUPLED_PCT = 10;
 
 const pct = (a, b) => (a == null || b == null ? null : ((a - b) / b) * 100);
+const trade = (t, ref) => (t ? { price: t.price, at: iso(t.ts), block: t.block, vsFeedPct: pct(t.price, ref) } : null);
 const iso = (ts) => (ts == null ? null : new Date(ts * 1000).toISOString());
 
 function row(e, nowTs, withHourly) {
@@ -21,7 +22,7 @@ function row(e, nowTs, withHourly) {
     symbol: e.symbol,
     status: reopen ? 'closed' : 'ongoing',
     fridayClose: { price: close.price, at: iso(close.ts) },
-    reopen: reopen ? { price: reopen.price, at: iso(reopen.ts) } : null,
+    reopen: reopen ? { price: reopen.price, at: iso(reopen.ts), vsFeedPct: pct(reopen.price, close.price) } : null,
     frozenHours: ((reopen ? reopen.ts : nowTs) - close.ts) / 3600,
     gapPct: reopen ? pct(reopen.price, close.price) : null,
     onchain: o && {
@@ -29,6 +30,8 @@ function row(e, nowTs, withHourly) {
       rangeLow, rangeHigh, rangeLowPct: pct(rangeLow, close.price), rangeHighPct: pct(rangeHigh, close.price),
       extremeLow: o.low, extremeHigh: o.high, extremeLowPct: pct(o.low, close.price), extremeHighPct: pct(o.high, close.price),
       last: o.last, lastPct: pct(o.last, close.price),
+      // Actual weekend trades with exact times from block headers.
+      highTrade: trade(o.highTrade, close.price), lowTrade: trade(o.lowTrade, close.price), lastTrade: trade(o.lastTrade, close.price),
       swaps: o.swaps, swapsExcludedThin: o.swapsExcludedThin, usdgVolume: o.usdgVolume,
       hourly: withHourly ? o.hourly : undefined, // only with ?symbol=, to keep the list small
     },

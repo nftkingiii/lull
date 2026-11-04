@@ -6,9 +6,15 @@ import { load, save } from '../store.js';
 const memo = load('blocks-by-ts.json', {});
 const tsOf = async (n) => Number((await client.getBlock({ blockNumber: n })).timestamp);
 
-export async function blockAtOrAfter(ts, head) {
+/**
+ * `after` (optional) is a block already known to be stamped before `ts` with header time `afterTs`,
+ * e.g. the previous hour's boundary; it narrows the search. The answer is always confirmed by
+ * header reads: ts(answer - 1) < ts <= ts(answer).
+ */
+export async function blockAtOrAfter(ts, head, after) {
   if (memo[ts]) return BigInt(memo[ts]);
-  let lo = 1n; let tlo = await tsOf(lo);
+  let lo = 1n; let tlo;
+  if (after && after.ts < ts) { lo = BigInt(after.block); tlo = after.ts; } else tlo = await tsOf(lo);
   let hi = head.number; let thi = Number(head.timestamp);
   if (ts > thi) throw new Error(`timestamp ${ts} is after the chain head`);
   if (ts <= tlo) return lo;

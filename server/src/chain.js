@@ -22,7 +22,7 @@ async function slot() {
   if (at > Date.now()) await sleep(at - Date.now());
 }
 
-async function pacedFetch(url, init) {
+export async function pacedFetch(url, init) {
   for (let attempt = 0; ; attempt++) {
     await slot();
     const res = await fetch(url, init);

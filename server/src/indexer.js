@@ -10,13 +10,14 @@ import { usdgPools, priceFromSqrt } from './sources/pools.js';
 import { roundHistory } from './sources/rounds.js';
 import { scanSwaps, lastSwapAtOrBefore } from './sources/poollogs.js';
 import { blockAtOrAfter } from './sources/blocks.js';
+import { blockTimestamps } from './sources/blocktime.js';
 import { load, save } from './store.js';
 
 const REFRESH_MS = Number(process.env.LULL_INDEX_REFRESH_MS ?? 10 * 60_000);
 const DAY = 86_400;
 const Q96 = 2n ** 96n;
 const usdg = getAddress(USDG);
-const SUMMARY_VERSION = 2; // bump to invalidate cached weekend summaries
+const SUMMARY_VERSION = 3; // bump to invalidate cached weekend summaries
 
 export const state = { running: false, done: 0, total: 0, step: null, error: null, lastBuiltAt: null, head: null };
 let dataset = null;
@@ -46,41 +47,36 @@ function virtualUsdg(s, usdgIsToken0) {
 }
 
 /**
- * Block -> timestamp inside a window, by linear interpolation between exact anchors. Logs carry no
- * usable timestamp, and the block rate is steady (~9.5-9.75/s), so 6-hour anchors are accurate to seconds.
+ * Exact hour boundaries for a window: [firstBlock, hourStartTs] pairs, where firstBlock is the first
+ * block whose header timestamp is at/after that hour (found by searching real headers). Swaps are
+ * bucketed by block against these, so no swap time is ever estimated from block numbers.
  */
-export async function windowClock(startTs, endTs, headBlock) {
-  const anchorTs = [startTs];
-  for (let t = Math.ceil(startTs / 21_600) * 21_600; t < endTs; t += 21_600) if (t > startTs) anchorTs.push(t);
-  anchorTs.push(endTs);
-  const anchors = [];
-  for (const t of anchorTs) anchors.push([Number(await blockAtOrAfter(t, headBlock)), t]);
-  return (b) => {
-    let i = 1;
-    while (i < anchors.length - 1 && anchors[i][0] <= b) i++;
-    const [b0, t0] = anchors[i - 1]; const [b1, t1] = anchors[i];
-    return b1 === b0 ? t0 : Math.round(t0 + ((b - b0) / (b1 - b0)) * (t1 - t0));
-  };
+export async function hourBoundaries(closeTs, endTs, fromBlock, headBlock) {
+  const out = [[Number(fromBlock), closeTs - (closeTs % 3600)]];
+  let prev = { block: Number(fromBlock), ts: closeTs }; // fromBlock is the first block at/after closeTs
+  for (let h = closeTs - (closeTs % 3600) + 3600; h < endTs; h += 3600) {
+    const b = Number(await blockAtOrAfter(h, headBlock, prev.ts < h ? { block: prev.block - 1, ts: prev.ts - 1 } : undefined));
+    out.push([b, h]);
+    prev = { block: b, ts: h };
+  }
+  return out;
 }
 
 /**
  * Streaming weekend summary: feed swaps in block order, read the result at the end.
  * Membership is by block: [fromBlock, toBlock) is the freeze, earlier blocks are "before".
+ * Highest, lowest and last trades keep their block so their exact time can be read afterwards.
  */
-export function weekendAccumulator({ pool, token, decimals, closeTs, fromBlock, toBlock, clock }) {
+export function weekendAccumulator({ pool, token, decimals, closeTs, fromBlock, toBlock, hours: bounds }) {
   const usdgIsToken0 = getAddress(pool.token0) === usdg;
   const price = (s) => priceFromSqrt(s.sp, pool.token0, token, decimals);
   const usable = (s) => virtualUsdg(s, usdgIsToken0) >= MIN_POOL_USDG;
-  let before = null; // last swap at or before the close
-  let low = null; let high = null; let last = null;
+  let before = null; // last swap before the close block
+  let low = null; let high = null; let last = null; // trades only
   let swaps = 0; let thin = 0; let volume = 0;
-  // Hourly OHLC keeps the chart honest without storing every swap.
-  const hours = new Map();
-  const point = (ts, p) => {
-    low = low == null || p < low ? p : low;
-    high = high == null || p > high ? p : high;
-    last = p;
-    const h = ts - (ts % 3600);
+  const hours = new Map(); // hourStartTs -> [hourStartTs, open, high, low, close]
+  let hi = 0; // index into bounds, advanced as blocks increase
+  const bucket = (h, p) => {
     const c = hours.get(h);
     if (!c) hours.set(h, [h, p, p, p, p]);
     else { c[2] = Math.max(c[2], p); c[3] = Math.min(c[3], p); c[4] = p; }
@@ -89,7 +85,8 @@ export function weekendAccumulator({ pool, token, decimals, closeTs, fromBlock, 
   const start = () => {
     if (started) return;
     started = true;
-    if (before && usable(before)) point(closeTs, price(before));
+    // The pool's standing price at the close opens the first hour (it is not a weekend trade).
+    if (before && usable(before)) bucket(bounds[0][1], price(before));
   };
   return {
     seed(s) { if (s && s.b < fromBlock) before = s; },
@@ -100,15 +97,26 @@ export function weekendAccumulator({ pool, token, decimals, closeTs, fromBlock, 
       swaps++;
       if (!usable(s)) { thin++; return; }
       volume += Math.abs(Number(usdgIsToken0 ? s.a0 : s.a1)) / 10 ** USDG_DECIMALS;
-      point(clock(s.b), price(s));
+      const p = price(s);
+      if (!low || p < low.price) low = { price: p, block: s.b };
+      if (!high || p > high.price) high = { price: p, block: s.b };
+      last = { price: p, block: s.b };
+      while (hi + 1 < bounds.length && bounds[hi + 1][0] <= s.b) hi++;
+      bucket(bounds[hi][1], p);
     },
     result() {
       start();
+      const standing = before && usable(before) ? price(before) : null;
       return {
         pool: pool.pool, fee: pool.fee,
-        priceAtClose: before && usable(before) ? price(before) : null,
-        low, high, last, swaps, swapsExcludedThin: thin, usdgVolume: volume,
-        hourly: [...hours.values()], // [hourStartTs, open, high, low, close]
+        priceAtClose: standing,
+        highTrade: high, lowTrade: low, lastTrade: last, // { price, block }, exact time added by build()
+        // Legacy aggregates: include the standing price so a quiet weekend still has a level.
+        low: low ? Math.min(low.price, standing ?? Infinity) : standing,
+        high: high ? Math.max(high.price, standing ?? -Infinity) : standing,
+        last: last ? last.price : standing,
+        swaps, swapsExcludedThin: thin, usdgVolume: volume,
+        hourly: [...hours.values()].sort((x, y) => x[0] - y[0]),
       };
     },
     get before() { return before; },
@@ -154,8 +162,8 @@ async function build() {
           const endTs = r.reopen ? r.reopen.ts : nowTs;
           const fromBlock = await blockAtOrAfter(r.close.ts, headBlock);
           const toBlock = r.reopen ? await blockAtOrAfter(endTs, headBlock) : headBlock.number;
-          const clock = await windowClock(r.close.ts, r.reopen ? endTs : Number(headBlock.timestamp), headBlock);
-          const acc = weekendAccumulator({ pool: r.s.pool, token: r.s.token, decimals: r.s.decimals, closeTs: r.close.ts, fromBlock: Number(fromBlock), toBlock: Number(toBlock), clock });
+          const hours = await hourBoundaries(r.close.ts, r.reopen ? endTs : Number(headBlock.timestamp), fromBlock, headBlock);
+          const acc = weekendAccumulator({ pool: r.s.pool, token: r.s.token, decimals: r.s.decimals, closeTs: r.close.ts, fromBlock: Number(fromBlock), toBlock: Number(toBlock), hours });
           // Search back only to where the previous weekend's scan ended, then reuse its last swap.
           const seen = lastSeen.get(r.s.pool.pool);
           const floor = seen && seen.block < fromBlock ? seen.block + 1n : historyBlock;
@@ -164,6 +172,10 @@ async function build() {
           await scanSwaps(r.s.pool.pool, fromBlock, toBlock, (x) => { acc.add(x); lastScanned = x; });
           lastSeen.set(r.s.pool.pool, { block: toBlock, swap: lastScanned ?? acc.before });
           entry.onchain = acc.result();
+          const o = entry.onchain;
+          const trades = [o.highTrade, o.lowTrade, o.lastTrade].filter(Boolean);
+          const ts = await blockTimestamps(trades.map((t) => t.block));
+          for (const t of trades) t.ts = ts.get(t.block);
           if (r.reopen) save(key, { v: SUMMARY_VERSION, closeTs: r.close.ts, reopenTs: r.reopen.ts, summary: entry.onchain });
         }
       }
