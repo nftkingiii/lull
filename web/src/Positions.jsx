@@ -1,109 +1,89 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { ArrowRight, Check, TriangleAlert } from 'lucide-react';
 import { useApi } from './api.js';
-import { fmtPrice, fmtPct, fmtNum, shortAddr, fmtUtc } from './format.js';
-import { Pill, ErrorState, Loading, Verdict } from './ui.jsx';
+import { Mode, Tag, ErrorState, Loading } from './ui.jsx';
+import { fmtPrice, fmtPct, fmtNum, fmtLltv, shortAddr } from './format.js';
 
 const isAddr = (s) => /^0x[0-9a-fA-F]{40}$/.test(s);
+const ICON = { size: 16, strokeWidth: 1.5, 'aria-hidden': true };
 
-function Position({ p }) {
+function Position({ p, stock }) {
   if (p.error) {
-    return (
-      <div className="card card-pad">
-        <div className="pos-head"><h3>{p.symbol} collateral</h3><span className="addr">{shortAddr(p.marketId)}</span></div>
-        <p className="state error">Oracle read failed: {p.error}</p>
-      </div>
-    );
+    return <div className="card"><div className="pos-top"><span className="tk">{p.symbol}</span></div><p className="hint">Oracle read failed: {p.error}</p></div>;
   }
-  const hasDebt = p.borrowed > 0;
+  const debt = p.borrowed > 0;
   return (
-    <div className="card card-pad">
-      <div className="pos-head">
-        <h3>{p.symbol} → {p.loanSymbol} <span className="meta">LLTV {(p.lltv * 100).toFixed(1)}%</span></h3>
-        <span className="addr" title={p.marketId}>market {shortAddr(p.marketId)}</span>
+    <section className="card pos" aria-label={`${p.symbol} position`}>
+      <div className="pos-top">
+        {stock?.logoUrl ? <img src={stock.logoUrl} alt="" width="24" height="24" style={{ borderRadius: 6, background: '#f2f2f2' }} /> : null}
+        <span className="tk">{p.symbol}</span>
+        <span className="k">borrowing {p.loanSymbol}, max loan-to-value {fmtLltv(p.lltv)}</span>
+        <span style={{ marginLeft: 'auto' }}><Tag>Live</Tag></span>
       </div>
-
-      <div className="kv">
-        <div><span className="k">Collateral <Pill kind="live" /></span><span className="v">{fmtNum(p.collateral, 4)} {p.symbol}</span></div>
-        <div><span className="k">Borrowed <Pill kind="live" /></span><span className="v">{p.borrowed.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {p.loanSymbol}</span></div>
-        <div><span className="k">Health factor <Pill kind="live" /></span><span className="v">{p.healthFactor == null ? 'no debt' : p.healthFactor.toFixed(3)}</span></div>
-        <div><span className="k">Liquidation price <Pill kind="live" /></span><span className="v">{fmtPrice(p.liquidationPrice)}</span></div>
-        <div><span className="k">Oracle price <Pill kind="live" /></span><span className="v">{fmtPrice(p.oraclePrice)}</span></div>
-        <div><span className="k">Move to liquidation <Pill kind="live" /></span><span className="v">{fmtPct(p.distanceToLiquidationPct, 1)}</span></div>
-        <div><span className="k">Feed price <Pill kind="live" /></span><span className="v">{p.feed ? fmtPrice(p.feed.price) : '—'}</span></div>
-        <div><span className="k">Pool price <Pill kind="live" /></span><span className="v">{p.pool ? fmtPrice(p.pool.price) : '—'}</span></div>
+      <div className="figs">
+        <div><div className="k">Health</div><div className={`fig ${p.liquidatableNow ? 'down' : ''}`}>{p.healthFactor == null ? 'No debt' : p.healthFactor.toFixed(3)}</div></div>
+        <div><div className="k">Liquidation price</div><div className="fig">{fmtPrice(p.liquidationPrice)}</div></div>
+        <div><div className="k">Oracle price</div><div className="fig">{fmtPrice(p.oraclePrice)}</div></div>
+        <div><div className="k">Borrowed {p.loanSymbol}</div><div className="fig">{fmtNum(p.borrowed)}</div></div>
       </div>
-      {hasDebt && (
-        <p style={{ margin: '4px 0 12px' }}>
-          {p.liquidatableNow
-            ? <Verdict bad>Liquidatable now at the current oracle price</Verdict>
-            : <Verdict>Not liquidatable at the current oracle price</Verdict>}
-        </p>
-      )}
-      <p className="meta" style={{ margin: 0 }}>
-        Oracle is {fmtPct(p.oracleVsFeedPct, 3)} from the Chainlink feed{p.feed ? ` (feed updated ${fmtUtc(p.feed.updatedAt)})` : ''}.
-        {p.interestAccrued ? ' Debt includes interest accrued to the current block.' : ' Debt is as of the market’s last update (interest rate unavailable).'}
+      <p className="hint" style={{ margin: 0 }}>
+        {fmtNum(p.collateral, 4)} {p.symbol} collateral. Liquidation is {fmtPct(p.distanceToLiquidationPct, 1)} vs the oracle price, and the oracle is {fmtPct(p.oracleVsFeedPct, 3)} vs the Chainlink feed
       </p>
-
-      {hasDebt && (
-        <div className="scenarios">
-          <div className="table-wrap" style={{ marginTop: 12 }}>
-            <table>
-              <thead>
-                <tr><th>What if the next reopen is…</th><th>Price <Pill kind="scenario" /></th><th>Move <Pill kind="scenario" /></th><th>Health <Pill kind="scenario" /></th><th>Outcome <Pill kind="scenario" /></th></tr>
-              </thead>
-              <tbody>
-                {p.scenarios.map((s) => (
-                  <tr key={s.name}>
-                    <td style={{ whiteSpace: 'normal' }}>{s.name}</td>
-                    <td>{fmtPrice(s.price)}</td>
-                    <td>{fmtPct(s.movePct, 1)}</td>
-                    <td>{s.healthFactor.toFixed(3)}</td>
-                    <td><Verdict bad={s.liquidated}>{s.liquidated ? 'Liquidated' : 'Survives'}</Verdict></td>
-                  </tr>
-                ))}
-                {!p.scenarios.length && <tr><td colSpan={5} className="note">No scenario available: this token has no Chainlink feed or usable pool.</td></tr>}
-              </tbody>
-            </table>
-          </div>
-          {!p.worstGapAvailable && p.feed && <p className="meta">The worst-gap scenario appears once the Replay history has finished building.</p>}
+      {debt && (
+        <div className="scen">
+          {p.scenarios.map((s) => (
+            <div className="scen-row" key={s.name}>
+              <div>
+                <div>{s.name.replace('Next reopen', 'If the next reopen is').replace('at the current pool price', 'at today’s pool price')
+                  .replace(/ \((\d{4})-(\d{2})-(\d{2})\)/, (_, y, mo, da) => `, weekend of ${Number(da)} ${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][Number(mo) - 1]}`)}</div>
+                <div className="hint" style={{ margin: 0 }}><Tag>Scenario</Tag> <span className="num">{fmtPrice(s.price)}, {fmtPct(s.movePct, 2)} vs feed</span></div>
+              </div>
+              <div className="num">health {s.healthFactor.toFixed(3)}</div>
+              <div className={`verdict ${s.liquidated ? 'down' : ''}`}>
+                {s.liquidated ? <TriangleAlert {...ICON} /> : <Check {...ICON} />}{s.liquidated ? 'Liquidated' : 'Survives'}
+              </div>
+            </div>
+          ))}
+          {!p.scenarios.length && <p className="hint">No reopen scenario: this token has no Chainlink feed or usable pool</p>}
+          {!p.worstGapAvailable && p.feed && <p className="hint">The worst-gap scenario appears once the weekend history has been built</p>}
         </div>
       )}
-    </div>
+    </section>
   );
 }
 
-export default function Positions({ wallet, onWallet }) {
-  const [input, setInput] = useState(wallet ?? '');
-  useEffect(() => { setInput(wallet ?? ''); }, [wallet]);
-  const valid = isAddr(input.trim());
-  const { data, error, loading, reload } = useApi(wallet && isAddr(wallet) ? `/api/positions/${wallet}` : null);
+export default function Positions({ wallet, meta, go }) {
+  const [v, setV] = useState(wallet ?? '');
+  useEffect(() => { setV(wallet ?? ''); }, [wallet]);
+  const ok = isAddr(v.trim());
+  const res = useApi(wallet && isAddr(wallet) ? `/api/positions/${wallet}` : null);
 
   return (
-    <section>
-      <div className="section-head"><h2>Morpho stock-collateral positions <Pill kind="live" /></h2></div>
-      <p className="lede">
-        Paste any wallet address to see its Morpho loans backed by Robinhood stock tokens, where each would be liquidated,
-        and whether the next market reopen could tip it over. Nothing is connected or signed.
-      </p>
-      <form className="controls" onSubmit={(e) => { e.preventDefault(); if (valid) onWallet(input.trim()); }} style={{ marginBottom: 16 }}>
-        <input type="text" value={input} onChange={(e) => setInput(e.target.value)} placeholder="0x… wallet address" aria-label="Wallet address" spellCheck={false} autoComplete="off" />
-        <button className="btn" type="submit" disabled={!valid}>Check</button>
-        {input && !valid && <span className="meta">Enter a 0x address with 40 hex characters.</span>}
-      </form>
+    <>
+      <section className="head">
+        <div><h1>Loans against stock tokens</h1></div>
+        <Mode live>Live{res.data ? `, block ${res.data.block?.toLocaleString() ?? '—'}` : ''}</Mode>
+      </section>
 
-      {wallet && !isAddr(wallet) && <ErrorState error="That address is not a valid wallet address." />}
-      {error && <ErrorState error={error} onRetry={reload} />}
-      {loading && <Loading>Scanning every stock-collateral Morpho market for {shortAddr(wallet)}…</Loading>}
-      {data && !loading && (
-        data.positions.length === 0
-          ? <div className="card state">No stock-collateral positions for {shortAddr(data.wallet)} across {data.marketsScanned} Morpho markets (block {data.block?.toLocaleString() ?? '—'}).</div>
-          : (
-            <div className="positions">
-              <p className="meta" style={{ margin: 0 }}>{data.positions.length} position{data.positions.length > 1 ? 's' : ''} across {data.marketsScanned} stock-collateral markets, read at block {data.block.toLocaleString()}.</p>
-              {data.positions.map((p) => <Position key={p.marketId} p={p} />)}
-            </div>
-          )
-      )}
-    </section>
+      <div className="stack">
+        <section className="card" aria-labelledby="wl">
+          <div className="k" id="wl">Morpho positions backed by Robinhood stock tokens, with where each liquidates and what the next reopen could do</div>
+          <form className="field" onSubmit={(e) => { e.preventDefault(); if (ok) go(`positions/${v.trim()}`); }}>
+            <label htmlFor="pw" className="sr">Wallet address</label>
+            <input id="pw" value={v} onChange={(e) => setV(e.target.value)} placeholder="Wallet address" autoComplete="off" spellCheck={false} />
+            <button className="btn" type="submit">Check<ArrowRight {...ICON} /></button>
+          </form>
+          <p className="hint">{v && !ok ? 'A wallet address is 0x followed by 40 hex characters' : 'Read-only, no wallet connection or signature'}</p>
+        </section>
+
+        {wallet && !isAddr(wallet) && <ErrorState error="That is not a valid wallet address" />}
+        {res.error && <ErrorState error={res.error} onRetry={res.reload} />}
+        {res.loading && <Loading>Scanning every stock-collateral Morpho market for {shortAddr(wallet)}</Loading>}
+        {res.data && !res.loading && (res.data.positions.length === 0
+          ? <div className="card state">No stock-collateral positions for {shortAddr(res.data.wallet)} across {res.data.marketsScanned} Morpho markets</div>
+          : res.data.positions.map((p) => <Position key={p.marketId} p={p} stock={meta[p.symbol]} />))}
+        {res.data && <p className="foot" style={{ marginTop: 0 }}>Read at block {res.data.block?.toLocaleString()} from Morpho Blue. Scenarios move the oracle by the same ratio as the Chainlink feed, which it tracks within about 0.1%</p>}
+      </div>
+    </>
   );
 }

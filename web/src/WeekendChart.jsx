@@ -1,111 +1,116 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { fmtPrice, fmtPct } from './format.js';
-import { Pill } from './ui.jsx';
+import { fmtPrice, fmtPct, fmtWhen } from './format.js';
 
-const H = 260;
-const M = { top: 16, right: 92, bottom: 26, left: 64 };
+const G = 64; // right gutter for value labels
+const TOP = 24; const BOT = 24;
+const DAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+function niceStep(range) {
+  const raw = range / 5;
+  const p = 10 ** Math.floor(Math.log10(raw));
+  for (const m of [1, 2, 2.5, 5, 10]) if (m * p >= raw) return m * p;
+  return 10 * p;
+}
 
 /**
- * One stock over one weekend: the deepest pool's hourly close (line) and hourly high-low (band),
- * against the frozen Friday close and the Monday reopen (dashed reference lines, labelled directly).
- * Single series, so no legend: the title names it.
+ * The moment: the weekend's real hourly closing trades (from /api/weekends) against the frozen feed.
+ * Points: the pool's standing price at the freeze, each hour's closing trade at the end of its hour,
+ * and the last trade at its exact time. Single-trade high/low live in the legs, not here.
  */
-export default function WeekendChart({ symbol, row }) {
-  const ref = useRef(null);
-  const boxRef = useRef(null);
+export default function WeekendChart({ row, live }) {
+  const box = useRef(null);
+  const [size, setSize] = useState({ w: 800, h: 320 });
   const [hover, setHover] = useState(null);
-  // Draw at the container's real width so text stays 11px on a phone instead of scaling down.
-  const [W, setW] = useState(720);
   useEffect(() => {
-    const el = boxRef.current;
-    if (!el) return undefined;
-    const ro = new ResizeObserver(([e]) => setW(Math.max(300, Math.round(e.contentRect.width))));
+    const el = box.current;
+    const ro = new ResizeObserver(() => {
+      const svg = el.querySelector('svg');
+      setSize({ w: Math.max(300, Math.round(el.clientWidth)), h: Math.round(svg?.getBoundingClientRect().height || 320) });
+    });
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
+
   const o = row.onchain;
-  const closeTs = Date.parse(row.fridayClose.at) / 1000;
-  const endTs = row.reopen ? Date.parse(row.reopen.at) / 1000 : (o?.hourly?.at(-1)?.[0] ?? closeTs) + 3600;
+  const feed = row.fridayClose.price;
+  const t0 = Date.parse(row.fridayClose.at) / 1000;
+  const lt = o?.lastTrade;
+  const t1 = row.reopen ? Date.parse(row.reopen.at) / 1000 : lt ? Date.parse(lt.at) / 1000 : t0 + 3600;
 
-  const model = useMemo(() => {
-    const pts = (o?.hourly ?? []).map(([h, op, hi, lo, cl]) => ({ t: Math.max(h, closeTs), op, hi, lo, cl }));
-    const ys = [row.fridayClose.price, ...(row.reopen ? [row.reopen.price] : []), ...pts.flatMap((p) => [p.hi, p.lo])];
-    let y0 = Math.min(...ys); let y1 = Math.max(...ys);
-    const pad = (y1 - y0) * 0.12 || y0 * 0.01;
-    y0 -= pad; y1 += pad;
-    const iw = W - M.left - M.right; const ih = H - M.top - M.bottom;
-    const x = (t) => M.left + ((t - closeTs) / Math.max(1, endTs - closeTs)) * iw;
-    const y = (v) => M.top + (1 - (v - y0) / (y1 - y0)) * ih;
-    const ticks = Array.from({ length: 5 }, (_, i) => y0 + ((y1 - y0) * i) / 4);
-    // Day ticks at 00:00 UTC inside the window.
-    const days = [];
-    for (let d = Math.ceil(closeTs / 86400) * 86400; d < endTs; d += 86400) days.push(d);
-    return { pts, x, y, ticks, days, iw, ih };
-  }, [o, row, closeTs, endTs, W]);
+  const pts = useMemo(() => {
+    const out = [];
+    if (o?.priceAtClose != null) out.push([t0, o.priceAtClose]);
+    for (const [h, , , , c] of o?.hourly ?? []) out.push([Math.min(h + 3600, t1), c]);
+    if (lt) { while (out.length && out.at(-1)[0] >= Date.parse(lt.at) / 1000) out.pop(); out.push([Date.parse(lt.at) / 1000, lt.price]); }
+    return out.filter(([t]) => t >= t0 && t <= t1);
+  }, [o, t0, t1, lt]);
 
-  const { pts, x, y, ticks, days } = model;
-  const line = pts.map((p, i) => `${i ? 'L' : 'M'}${x(p.t).toFixed(1)},${y(p.cl).toFixed(1)}`).join('');
-  const band = pts.length > 1
-    ? `${pts.map((p, i) => `${i ? 'L' : 'M'}${x(p.t).toFixed(1)},${y(p.hi).toFixed(1)}`).join('')}${[...pts].reverse().map((p) => `L${x(p.t).toFixed(1)},${y(p.lo).toFixed(1)}`).join('')}Z`
-    : '';
+  const { w: W, h: H } = size;
+  const vals = [feed, ...pts.map((p) => p[1])];
+  let lo = Math.min(...vals); let hi = Math.max(...vals);
+  const pad = (hi - lo) * 0.12 || feed * 0.002;
+  lo -= pad; hi += pad;
+  const x = (t) => 4 + (W - G - 4) * ((t - t0) / Math.max(1, t1 - t0));
+  const y = (p) => TOP + (H - TOP - BOT) * ((hi - p) / (hi - lo));
+  const step = niceStep(hi - lo);
+  const ticks = [];
+  for (let v = Math.ceil(lo / step) * step; v <= hi; v += step) ticks.push(v);
+  const days = [];
+  for (let d = Math.ceil(t0 / 86400) * 86400; d < t1; d += 86400) days.push(d);
 
-  // Direct labels sit in the right margin; nudge them apart when the two lines are close.
-  const cY = y(row.fridayClose.price);
-  const rY = row.reopen ? y(row.reopen.price) : null;
-  let closeLabelY = cY; let reopenLabelY = rY;
-  if (rY != null && Math.abs(rY - cY) < 14) {
-    const mid = (rY + cY) / 2; const up = rY < cY;
-    reopenLabelY = mid + (up ? -7 : 7); closeLabelY = mid + (up ? 7 : -7);
+  const xy = pts.map(([t, p]) => [x(t), y(p)]);
+  let d = xy.length ? `M${xy[0][0]},${xy[0][1]}` : '';
+  for (let i = 1; i < xy.length; i++) {
+    const [x0, y0] = xy[i - 1]; const [x1, y1] = xy[i]; const m = (x0 + x1) / 2;
+    d += ` C${m},${y0} ${m},${y1} ${x1},${y1}`;
   }
-  const refLine = (yy, labelY, label) => (
-    <g key={label}>
-      <line x1={M.left} x2={W - M.right} y1={yy} y2={yy} stroke="var(--ref-line)" strokeWidth="1.25" strokeDasharray="4 4" />
-      <text x={W - M.right + 6} y={labelY + 4} fill="var(--text-secondary)" fontSize="11">{label}</text>
-    </g>
-  );
+  const fy = y(feed);
+  const end = xy.at(-1);
+  const fill = xy.length > 1 ? `${d} L${end[0]},${fy} L${xy[0][0]},${fy} Z` : '';
+  const dec = step < 0.1 ? 2 : step < 1 ? 2 : 0;
 
   const onMove = (e) => {
-    if (!pts.length) return;
-    const r = ref.current.getBoundingClientRect();
-    const px = ((e.clientX - r.left) / r.width) * W;
-    let best = pts[0];
-    for (const p of pts) if (Math.abs(x(p.t) - px) < Math.abs(x(best.t) - px)) best = p;
-    setHover({ p: best, left: (x(best.t) / W) * r.width, top: (y(best.cl) / H) * r.height });
+    if (!xy.length) return;
+    const r = box.current.getBoundingClientRect();
+    const px = e.clientX - r.left;
+    let i = 0;
+    for (let j = 1; j < xy.length; j++) if (Math.abs(xy[j][0] - px) < Math.abs(xy[i][0] - px)) i = j;
+    setHover(i);
   };
 
-  const fmtDay = (t) => new Date(t * 1000).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', timeZone: 'UTC' });
-  const fmtHour = (t) => new Date(t * 1000).toLocaleString('en-GB', { weekday: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
+  const label = `${row.symbol} on-chain price against the frozen feed of ${fmtPrice(feed)}, ${fmtWhen(row.fridayClose.at)} to ${row.reopen ? fmtWhen(row.reopen.at) : 'now'}`;
 
   return (
-    <div className="card chart" ref={boxRef}>
-      <h3>{symbol}: deepest pool over the freeze <Pill kind="replay" /></h3>
-      <div className="meta">Hourly close (line) and high–low (band), UTC. Dashed lines are the feed’s Friday close and Monday reopen.</div>
-      {!pts.length ? (
-        <div className="state">{row.onchainNote ?? 'No usable swaps in this window.'}</div>
-      ) : (
-        <div style={{ position: 'relative' }} onPointerMove={onMove} onPointerLeave={() => setHover(null)}>
-          <svg ref={ref} viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`${symbol} pool price during the weekend of ${row.fridayClose.at.slice(0, 10)}`}>
-            <g className="grid">{ticks.map((v) => <line key={v} x1={M.left} x2={W - M.right} y1={y(v)} y2={y(v)} />)}</g>
-            <g className="axis">
-              {ticks.map((v) => <text key={v} x={M.left - 8} y={y(v) + 4} textAnchor="end">{fmtPrice(v)}</text>)}
-              {days.map((d) => <text key={d} x={x(d)} y={H - 6} textAnchor="middle">{fmtDay(d)}</text>)}
-            </g>
-            <path d={band} fill="var(--series-1-band)" />
-            <path d={line} fill="none" stroke="var(--series-1)" strokeWidth="2" strokeLinejoin="round" />
-            {refLine(y(row.fridayClose.price), closeLabelY, `Fri close ${fmtPrice(row.fridayClose.price)}`)}
-            {row.reopen && refLine(y(row.reopen.price), reopenLabelY, `Reopen ${fmtPrice(row.reopen.price)}`)}
-            {hover && <line x1={x(hover.p.t)} x2={x(hover.p.t)} y1={M.top} y2={H - M.bottom} stroke="var(--ref-line)" strokeWidth="1" />}
-            {hover && <circle cx={x(hover.p.t)} cy={y(hover.p.cl)} r="4" fill="var(--series-1)" stroke="var(--surface-1)" strokeWidth="2" />}
-          </svg>
-          {hover && (
-            <div className="tooltip" style={{ left: Math.min(hover.left + 12, (ref.current?.getBoundingClientRect().width ?? 600) - 170), top: Math.max(hover.top - 60, 0) }}>
-              <div className="meta">{fmtHour(hover.p.t)}</div>
-              <div><strong>{fmtPrice(hover.p.cl)}</strong> close · {fmtPct(((hover.p.cl - row.fridayClose.price) / row.fridayClose.price) * 100)} vs Fri</div>
-              <div className="meta">high {fmtPrice(hover.p.hi)} · low {fmtPrice(hover.p.lo)}</div>
-            </div>
-          )}
+    <div className="chart" ref={box} onPointerMove={onMove} onPointerLeave={() => setHover(null)}>
+      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={label} preserveAspectRatio="none">
+        {ticks.map((v) => (
+          <g key={v}>
+            <line x1="0" x2={W - G + 8} y1={y(v)} y2={y(v)} stroke="rgba(237,237,237,.05)" />
+            {Math.abs(y(v) - fy) > 14 && <text x={W} y={y(v) + 4} textAnchor="end" fontFamily="Geist Mono" fontSize="11" fill="#85858b">{v.toFixed(dec)}</text>}
+          </g>
+        ))}
+        {days.map((t) => (
+          <g key={t}>
+            <line x1={x(t)} x2={x(t)} y1="0" y2={H} stroke="rgba(237,237,237,.06)" />
+            {x(t1) - x(t) > 40 && <text x={x(t) + 6} y={H - 6} fontFamily="Geist Mono" fontSize="11" fill="#85858b">{DAY[new Date(t * 1000).getUTCDay()]}</text>}
+          </g>
+        ))}
+        {fill && <path d={fill} fill="rgba(237,237,237,.04)" />}
+        <line x1="0" x2={W - G + 8} y1={fy} y2={fy} stroke="#a1a1a6" strokeWidth="1" strokeDasharray="4 4" />
+        <rect x={W - G + 12} y={fy - 10} width={G - 12} height="20" rx="4" fill="#232325" />
+        <text x={W - 4} y={fy + 4} textAnchor="end" fontFamily="Geist Mono" fontSize="11" fill="#ededed">{feed.toFixed(2)}</text>
+        {d && <path d={d} fill="none" stroke="#e8a24a" strokeWidth="2" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />}
+        {row.reopen && <line x1={x(t1)} x2={x(t1)} y1="0" y2={H} stroke="rgba(237,237,237,.3)" />}
+        {end && <circle cx={end[0]} cy={end[1]} r="4" fill="#e8a24a" />}
+        {hover != null && <line x1={xy[hover][0]} x2={xy[hover][0]} y1="0" y2={H} stroke="rgba(237,237,237,.14)" />}
+      </svg>
+      {hover != null && (
+        <div className="chart-tip num" style={{ left: Math.min(xy[hover][0] + 8, W - 190), top: Math.max(xy[hover][1] - 44, 0) }}>
+          <div>{fmtPrice(pts[hover][1])} <span className="t">{fmtPct((pts[hover][1] / feed - 1) * 100)} vs feed</span></div>
+          <div className="t">{fmtWhen(new Date(pts[hover][0] * 1000).toISOString())}{live && hover === pts.length - 1 ? ', latest' : ''}</div>
         </div>
       )}
+      {!pts.length && <p className="hint">{row.onchainNote ?? 'No usable trades in this window'}</p>}
     </div>
   );
 }

@@ -1,41 +1,61 @@
-// Shared bits. Pill marks where a number comes from: every number in the app sits under one.
-export function Pill({ kind }) {
-  return <span className={`pill pill-${kind}`}>{kind}</span>;
-}
+import { useState } from 'react';
+import { ArrowDown, ArrowUp, Minus, CircleAlert } from 'lucide-react';
+import { direction } from './calls.js';
 
-export function ErrorState({ error, onRetry }) {
+const ICON = { size: 16, strokeWidth: 1.5, 'aria-hidden': true };
+
+/** Provenance label, sentence case: Live, Replay or Scenario. */
+export const Tag = ({ children }) => <span className="tag">{children}</span>;
+
+/** Robinhood logo (from api.robinhood.com logoUrl) + symbol + description. No drawn logos. */
+export function Ticker({ stock, symbol }) {
+  const [broken, setBroken] = useState(false);
   return (
-    <div className="card state error" role="alert">
-      <strong>Couldn’t load this data.</strong> {error}
-      {onRetry && <> <button className="btn btn-quiet" onClick={onRetry}>Retry</button></>}
-      <div className="meta">Nothing is shown in its place: Lull never substitutes demo data.</div>
+    <div className="ticker">
+      {stock?.logoUrl && !broken
+        ? <img src={stock.logoUrl} alt="" width="32" height="32" onError={() => setBroken(true)} />
+        : <span className="tk" style={{ width: 48 }} aria-hidden="true">{symbol}</span>}
+      <span><b>{symbol}</b> {stock ? `${stock.name} ${stock.kind} on Robinhood Chain` : 'on Robinhood Chain'}</span>
     </div>
   );
 }
 
-export function Loading({ children = 'Loading…' }) {
-  return <div className="card state" aria-busy="true">{children}</div>;
+export function Mode({ live, children }) {
+  return <div className={`mode${live ? ' live' : ''}`}><i aria-hidden="true" />{children}</div>;
 }
 
-/** Diverging bar centred on zero: blue for up, red for down. The number beside it carries the value. */
-export function DriftBar({ value, max }) {
-  if (value == null || !max) return <span className="drift-bar" aria-hidden="true" />;
-  const w = Math.min(Math.abs(value) / max, 1) * 50;
-  const style = value >= 0
-    ? { left: '50%', width: `${w}%`, background: 'var(--div-pos)' }
-    : { right: '50%', width: `${w}%`, background: 'var(--div-neg)' };
-  return <span className="drift-bar" aria-hidden="true"><span style={style} /></span>;
+export function Call({ pct, miss }) {
+  const dir = direction(pct);
+  if (!dir) return <span className="call miss">No weekend trades</span>;
+  const Icon = dir === 'higher' ? ArrowUp : dir === 'lower' ? ArrowDown : Minus;
+  const cls = miss ? 'miss' : dir === 'higher' ? 'up' : dir === 'lower' ? 'down' : 'flat';
+  return <span className={`call ${cls}`}><Icon {...ICON} />Called {dir}</span>;
 }
 
-export function Verdict({ bad, children }) {
+export function ErrorState({ error, onRetry }) {
   return (
-    <span className={`verdict ${bad ? 'bad' : 'ok'}`}>
-      {bad ? (
-        <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 1 13 12H1z" fill="var(--status-critical)" /><path d="M7 5v3.5M7 10v.5" stroke="#fff" strokeWidth="1.6" strokeLinecap="round" /></svg>
-      ) : (
-        <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="6" fill="var(--status-good)" /><path d="m4.2 7.2 1.9 1.9 3.7-3.9" stroke="#fff" strokeWidth="1.6" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>
-      )}
-      {children}
-    </span>
+    <div className="card state err" role="alert">
+      <CircleAlert {...ICON} size={18} />
+      <div>
+        <div>Couldn’t read this data</div>
+        <div className="hint">{error}. Nothing is shown in its place.</div>
+        {onRetry && <button className="link" style={{ marginTop: 8 }} onClick={onRetry}>Try again</button>}
+      </div>
+    </div>
+  );
+}
+
+export const Loading = ({ children = 'Reading chain data' }) => <div className="card state" aria-busy="true">{children}</div>;
+
+export function Indexing({ indexer }) {
+  const pct = indexer.total ? (indexer.done / indexer.total) * 100 : 0;
+  return (
+    <div className="card" aria-busy="true">
+      <div className="k">Building the weekend history from chain logs</div>
+      <p className="hint">
+        {indexer.error ? `Indexer error: ${indexer.error}. It retries on its next run` : `Step ${indexer.done} of ${indexer.total || '…'}, ${indexer.step ?? 'starting'}`}
+      </p>
+      <div className="progress" role="progressbar" aria-valuenow={Math.round(pct)} aria-valuemin={0} aria-valuemax={100}><i style={{ width: `${pct}%` }} /></div>
+    </div>
   );
 }

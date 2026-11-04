@@ -54,4 +54,4 @@ Behind an HTTPS proxy (e.g. a cloud sandbox), Node's fetch needs `NODE_USE_ENV_P
 
 ## Styling
 
-All colours, fonts and radii live in `web/src/theme.css` (light + dark). Swap that file to apply a house style.
+The UI follows the locked design system in `LULL_DESIGN.md` (reference: `design/tonight-reference.html`). Tokens live in `web/src/theme.css`; fonts are Geist, Geist Mono and Instrument Serif from Google Fonts; icons are lucide.
