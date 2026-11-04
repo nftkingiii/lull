@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lull · Tonight</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500&family=Geist+Mono:wght@400;500&family=Instrument+Serif&display=swap" rel="stylesheet">
+<style>
+:root{
+  --deep:#0f0f10; --page:#141415; --card:#19191b; --raised:#232325;
+  --line:rgba(237,237,237,.08); --line-2:rgba(237,237,237,.14);
+  --fg:#ededed; --fg-2:#a1a1a6; --fg-3:#85858b;
+  --accent:#e8a24a;
+  --up:#4cc38a; --down:#e5484d;
+  --ease:cubic-bezier(.22,1,.36,1);
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--page);color:var(--fg);font:400 14px/20px Geist,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+.num{font-family:"Geist Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums}
+.wrap{max-width:1440px;margin:0 auto;padding:0 32px 64px}
+button,input{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* top bar */
+.bar{height:56px;display:flex;align-items:center;gap:16px;border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:center;gap:8px;font-size:16px;font-weight:500}
+.brand svg{color:var(--fg)}
+.seg{margin-left:auto;display:flex;gap:2px;padding:2px;border-radius:10px;background:var(--deep);border:1px solid var(--line)}
+.seg button{appearance:none;border:0;background:transparent;color:var(--fg-2);height:32px;padding:0 16px;border-radius:8px;cursor:pointer;transition:background-color .15s var(--ease),color .15s var(--ease)}
+.seg button:hover{color:var(--fg)}
+.seg button[aria-selected="true"]{background:var(--raised);color:var(--fg);box-shadow:inset 0 1px 0 rgba(255,255,255,.08)}
+
+/* page head */
+.head{display:flex;align-items:flex-end;gap:24px;padding:40px 0 24px}
+.ticker{display:flex;align-items:center;gap:12px;color:var(--fg-2)}
+.ticker img,.ticker .logo{width:32px;height:32px;border-radius:8px;background:#f2f2f2;display:grid;place-items:center}
+.ticker b{color:var(--fg);font-weight:500}
+h1{font-family:"Instrument Serif",serif;font-weight:400;font-size:56px;line-height:1.04;letter-spacing:-.02em;margin:16px 0 0}
+.mode{margin-left:auto;display:flex;align-items:center;gap:8px;color:var(--fg-2);font-size:13px}
+.mode i{width:6px;height:6px;border-radius:50%;background:var(--fg-3)}
+
+/* grid */
+.grid{display:grid;grid-template-columns:minmax(0,8fr) minmax(0,4fr);gap:24px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:24px}
+.k{color:var(--fg-2);font-size:13px}
+
+/* status line */
+.status{display:flex;align-items:baseline;gap:16px;flex-wrap:wrap}
+.status .call{display:inline-flex;align-items:center;gap:8px;color:var(--down);font-weight:500}
+.status .res{color:var(--fg-2)}
+.status .res .num{color:var(--fg)}
+
+/* chart, the moment */
+.chart{margin-top:24px;position:relative}
+.chart svg{display:block;width:100%;height:320px}
+.axis{display:grid;grid-template-columns:auto 1fr auto;align-items:start;gap:16px;margin-top:8px;padding-right:60px}
+.port .code{font-family:"Geist Mono",monospace;font-size:20px;line-height:24px}
+.port .t{color:var(--fg-3);font-size:12px}
+.port.end{text-align:right}
+.days{display:flex;justify-content:space-between;color:var(--fg-3);font:400 12px "Geist Mono",monospace;padding:4px 18% 0 16%}
+
+/* legs */
+.legs{margin-top:24px;border-top:1px solid var(--line)}
+.leg{display:grid;grid-template-columns:20px minmax(0,1fr) auto;gap:12px;align-items:center;min-height:56px;padding:8px 0;border-bottom:1px solid var(--line)}
+.leg:last-child{border-bottom:0}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--fg-3);justify-self:center}
+.dot.acc{background:var(--accent)}
+.dot.ring{background:transparent;border:1.5px solid var(--fg)}
+.leg .s{color:var(--fg-3);font-size:13px}
+.leg .v{text-align:right}
+.leg .d{color:var(--fg-3);font-size:12px;line-height:16px}
+.up{color:var(--up)}.down{color:var(--down)}
+
+/* side */
+.side{display:grid;gap:24px;align-content:start}
+.fig{font-family:"Geist Mono",monospace;font-size:28px;line-height:32px;margin-top:4px;font-variant-numeric:tabular-nums}
+.pair{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px}
+.field{display:flex;gap:8px;margin-top:20px}
+.field input{flex:1;min-width:0;height:44px;border-radius:10px;border:1px solid var(--line-2);background:var(--deep);padding:0 12px;font-family:"Geist Mono",monospace;font-size:13px}
+.field input::placeholder{color:var(--fg-3)}
+.btn{display:inline-flex;align-items:center;gap:8px;height:44px;padding:0 16px;border:0;border-radius:10px;background:var(--fg);color:var(--page);font-weight:500;cursor:pointer;transition:background-color .15s var(--ease),transform .15s var(--ease)}
+.btn:hover{background:#fff}.btn:active{transform:scale(.98)}
+.hint{color:var(--fg-3);font-size:12px;line-height:16px;margin:8px 0 0}
+.rows{margin-top:8px}
+.row{display:grid;grid-template-columns:48px minmax(0,1fr) auto;gap:12px;align-items:center;min-height:56px;padding:8px 0;border-top:1px solid var(--line)}
+.row:first-child{border-top:0}
+.tk{font:400 12px "Geist Mono",monospace;color:var(--fg);background:var(--raised);border-radius:6px;height:24px;display:grid;place-items:center}
+.row .s{color:var(--fg-3);font-size:12px;line-height:16px}
+.row .v{text-align:right}
+.miss{color:var(--fg-3)}
+.meter{height:4px;border-radius:2px;background:var(--raised);margin-top:16px;overflow:hidden}
+.meter i{display:block;height:100%;width:83.9%;background:var(--fg-2)}
+.foot{color:var(--fg-3);font-size:12px;line-height:18px;margin-top:24px;max-width:880px}
+
+@media (max-width:960px){
+  .wrap{padding:0 16px 48px}
+  .grid{grid-template-columns:minmax(0,1fr)}
+  .head{flex-direction:column;align-items:flex-start;gap:12px;padding-top:32px}
+  .mode{margin-left:0}
+  h1{font-size:40px}
+  .chart svg{height:220px}
+  .days{padding:4px 12% 0 12%}
+  .brand span{display:none}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="bar">
+    <div class="brand">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+      <span>Lull</span>
+    </div>
+    <nav class="seg" role="tablist" aria-label="Sections">
+      <button role="tab" aria-selected="true">Tonight</button>
+      <button role="tab" aria-selected="false">Replay</button>
+      <button role="tab" aria-selected="false">Positions</button>
+    </nav>
+  </header>
+
+  <section class="head">
+    <div>
+      <div class="ticker">
+        <span class="logo" aria-hidden="true"><svg width="15" height="18" viewBox="0 0 17 20" fill="#141415"><path d="M14.1 10.6c0-2.6 2.1-3.8 2.2-3.9-1.2-1.8-3.1-2-3.7-2-1.6-.2-3.1.9-3.9.9-.8 0-2-.9-3.4-.9C3.6 4.8 2 5.8 1.1 7.4c-1.9 3.2-.5 8 1.3 10.6.9 1.3 1.9 2.7 3.3 2.6 1.3-.1 1.8-.9 3.4-.9s2 .9 3.4.8c1.4 0 2.3-1.3 3.2-2.6 1-1.5 1.4-2.9 1.4-3-.1 0-2.9-1.1-3-4.3ZM11.5 3c.7-.9 1.2-2 1.1-3.2-1 0-2.3.7-3 1.6-.7.8-1.2 2-1.1 3.1 1.2.1 2.3-.6 3-1.5Z"/></svg></span>
+        <span><b>AAPL</b> Apple stock token on Robinhood Chain</span>
+      </div>
+      <h1>Reopened Monday at 00:00 UTC</h1>
+    </div>
+    <div class="mode"><i></i>Replay of the weekend of 24 Oct</div>
+  </section>
+
+  <main class="grid">
+    <section class="card" aria-labelledby="ch">
+      <div class="status">
+        <span class="call">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M19 12l-7 7-7-7"/></svg>
+          Called lower
+        </span>
+        <span class="res">Last trade <span class="num down">−0.13%</span> vs frozen feed, feed reopened <span class="num">−0.01%</span></span>
+      </div>
+
+      <div class="chart">
+        <h2 id="ch" style="position:absolute;left:-9999px">AAPL on-chain price against the frozen feed, Friday 14:39 to Monday 00:00 UTC</h2>
+        <svg id="plot" viewBox="0 0 1000 320" role="img" aria-label="Hourly on-chain price of AAPL stayed within about half a percent of the frozen feed all weekend and ended just below it"></svg>
+        <div class="axis">
+          <div class="port"><div class="code">FRI</div><div class="t num">14:39 feed froze</div></div>
+          <div></div>
+          <div class="port end"><div class="code">MON</div><div class="t num">00:00 feed reopened</div></div>
+        </div>
+      </div>
+
+      <div class="legs">
+        <div class="leg"><span class="dot ring"></span><div><div>Feed froze</div><div class="s">Fri 14:39 UTC, last Chainlink update</div></div><div class="v num">$346.80<div class="d">frozen 57 hours</div></div></div>
+        <div class="leg"><span class="dot"></span><div><div>Highest trade</div><div class="s">Fri 15:27 UTC</div></div><div class="v num">$348.44<div class="d up">+0.47% vs feed</div></div></div>
+        <div class="leg"><span class="dot"></span><div><div>Lowest trade</div><div class="s">Sun 23:42 UTC</div></div><div class="v num">$345.51<div class="d down">−0.37% vs feed</div></div></div>
+        <div class="leg"><span class="dot acc"></span><div><div>Last trade before reopen</div><div class="s">Mon 00:00:35 UTC</div></div><div class="v num">$346.34<div class="d down">−0.13% vs feed</div></div></div>
+        <div class="leg"><span class="dot ring"></span><div><div>Feed reopened</div><div class="s">Mon 00:00:38 UTC</div></div><div class="v num">$346.76<div class="d">−0.01% vs Friday</div></div></div>
+      </div>
+    </section>
+
+    <div class="side">
+      <section class="card" aria-labelledby="ex">
+        <div class="k" id="ex">Borrowed against AAPL on Morpho</div>
+        <div class="pair">
+          <div><div class="k">Borrowed</div><div class="fig">$201k</div></div>
+          <div><div class="k">Max loan-to-value</div><div class="fig">62%</div></div>
+        </div>
+        <form class="field" onsubmit="event.preventDefault()">
+          <label for="w" style="position:absolute;left:-9999px">Wallet address</label>
+          <input id="w" placeholder="Wallet address" autocomplete="off" spellcheck="false">
+          <button class="btn" type="submit">Check
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+          </button>
+        </form>
+        <p class="hint">Read-only, no wallet connection or signature</p>
+      </section>
+
+      <section class="card" aria-labelledby="ot">
+        <div class="k" id="ot">Same weekend, other stocks</div>
+        <div class="rows">
+          <div class="row"><span class="tk">NVDA</span><div><div>Called higher</div><div class="s num">last trade +0.46%</div></div><div class="v num up">+0.36%<div class="s">reopened</div></div></div>
+          <div class="row"><span class="tk">AAPL</span><div><div>Called lower</div><div class="s num">last trade −0.13%</div></div><div class="v num">−0.01%<div class="s">reopened</div></div></div>
+          <div class="row"><span class="tk">TSLA</span><div><div class="miss">Called flat</div><div class="s num">last trade −0.01%</div></div><div class="v num up">+0.28%<div class="s">reopened</div></div></div>
+        </div>
+      </section>
+
+      <section class="card" aria-labelledby="hr">
+        <div class="k" id="hr">Weekends where the last trade called the direction</div>
+        <div class="fig">286 of 341</div>
+        <div class="meter" aria-hidden="true"><i></i></div>
+        <p class="hint">33 stocks since 1 Jul, decoupled pools left out</p>
+      </section>
+    </div>
+  </main>
+
+  <p class="foot">Feed values are Chainlink rounds and trades are Uniswap v3 swaps in the deepest USDG pool, all read on Robinhood Chain. Borrowed amounts are from Morpho on 30 Oct. The chart shows hourly closing trades; the highest and lowest single trades are listed separately.</p>
+</div>
+
+<script>
+const feed=346.80, hours=57.36;
+const s=[[0,348.22],[1,347.05],[2,346.22],[3,346.78],[4,347.27],[5,347.74],[6,347.58],[7,347.58],[8,347.51],[9,347.58],[10,347.52],[11,347.52],[12,347.51],[13,347.31],[14,347.48],[15,347.27],[16,347.16],[17,346.9],[18,346.77],[19,346.66],[20,346.72],[21,346.86],[22,346.87],[23,346.9],[24,346.3],[25,346.49],[26,346.5],[27,346.85],[28,346.63],[29,346.98],[30,346.92],[31,347.11],[32,347.2],[33,347.17],[34,346.97],[35,346.93],[36,346.86],[37,346.83],[38,346.73],[39,346.59],[40,346.76],[41,346.78],[42,346.66],[43,346.64],[44,346.69],[45,346.61],[46,346.61],[47,346.6],[48,346.67],[49,346.79],[50,346.96],[51,346.92],[52,347.23],[53,347.04],[54,347.04],[55,347.13],[56,346.17],[57,346.34]];
+const svg=document.getElementById('plot');
+function draw(){
+const W=Math.max(320,Math.round(svg.getBoundingClientRect().width)||1000),H=Math.round(svg.getBoundingClientRect().height)||320,top=24,bot=24,lo=345.9,hi=348.6;
+svg.setAttribute('viewBox',`0 0 ${W} ${H}`);
+const G=64, x=h=>4+(W-G-4)*(h/hours), y=p=>top+(H-top-bot)*(hi-p)/(hi-lo);
+const pts=s.map(([h,p])=>[x(h),y(p)]);
+let d=`M${pts[0][0]},${pts[0][1]}`;
+for(let i=1;i<pts.length;i++){const [x0,y0]=pts[i-1],[x1,y1]=pts[i],m=(x0+x1)/2;d+=` C${m},${y0} ${m},${y1} ${x1},${y1}`}
+const fy=y(feed), sat=x(9.35), sun=x(33.35), end=pts[pts.length-1];
+const grid=[346,346.5,347,347.5,348,348.5].map(v=>`<line x1="0" x2="${W-G+8}" y1="${y(v)}" y2="${y(v)}" stroke="rgba(237,237,237,.05)"/><text x="${W}" y="${y(v)+4}" text-anchor="end" font-family="Geist Mono" font-size="11" fill="#85858b">${v.toFixed(2)}</text>`).join('');
+svg.innerHTML=`
+${grid}
+<line x1="${sat}" x2="${sat}" y1="0" y2="${H}" stroke="rgba(237,237,237,.06)"/>
+<line x1="${sun}" x2="${sun}" y1="0" y2="${H}" stroke="rgba(237,237,237,.06)"/>
+<text x="${sat+6}" y="${H-6}" font-family="Geist Mono" font-size="11" fill="#85858b">Sat</text>
+<text x="${sun+6}" y="${H-6}" font-family="Geist Mono" font-size="11" fill="#85858b">Sun</text>
+<path d="${d} L${end[0]},${fy} L${pts[0][0]},${fy} Z" fill="rgba(237,237,237,.04)"/>
+<line x1="0" x2="${W-G+8}" y1="${fy}" y2="${fy}" stroke="#a1a1a6" stroke-width="1" stroke-dasharray="4 4"/>
+<rect x="${W-G+12}" y="${fy-10}" width="${G-12}" height="20" rx="4" fill="#232325"/>
+<text x="${W-4}" y="${fy+4}" text-anchor="end" font-family="Geist Mono" font-size="11" fill="#ededed">346.80</text>
+<path d="${d}" fill="none" stroke="#e8a24a" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>
+<line x1="${end[0]}" x2="${end[0]}" y1="0" y2="${H}" stroke="rgba(237,237,237,.3)"/>
+<circle cx="${end[0]}" cy="${end[1]}" r="4" fill="#e8a24a"/>`;
+}
+draw(); addEventListener('resize',draw);
+document.querySelectorAll('.seg button').forEach(b=>b.addEventListener('click',()=>document.querySelectorAll('.seg button').forEach(o=>o.setAttribute('aria-selected',String(o===b)))));
+</script>
+</body>
+</html>
