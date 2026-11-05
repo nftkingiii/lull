@@ -145,3 +145,10 @@ button.row[aria-pressed="true"] { background: rgba(237, 237, 237, .05); }
   .scen-row { grid-template-columns: minmax(0, 1fr) auto; }
   .scen-row > :nth-child(2) { display: none; }
 }
+
+/* Site footer: quiet links to the method, the plain-text summary and the source */
+.site-foot{display:flex;flex-wrap:wrap;align-items:center;gap:16px;margin-top:48px;padding:24px 0;border-top:1px solid var(--line);color:var(--fg-3);font-size:13px}
+.site-foot nav{margin-left:auto;display:flex;gap:16px}
+.site-foot a{color:var(--fg-2);text-decoration:none;transition:color .15s var(--ease)}
+.site-foot a:hover{color:var(--fg)}
+@media (max-width:960px){.site-foot nav{margin-left:0}}

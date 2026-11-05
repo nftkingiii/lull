@@ -1,11 +1,52 @@
 # Lull
 
-Read-only watcher for Robinhood Chain (4663) tokenized stocks while US markets are closed.
-No wallet connection, no keys, no transactions. Every number in the UI is labelled
-**live**, **replay** or **scenario**, and failed reads show as errors — there is no demo data.
+**The feed sleeps. The market doesn't.** Live at **https://lull.up.railway.app**
+
+Robinhood's stock tokens trade on Robinhood Chain around the clock, but their Chainlink price feeds
+follow US market hours. Every weekend the feed freezes while the tokens keep trading, and lenders keep
+valuing collateral at the frozen price until the first update on Sunday 20:00 New York time. Lull shows
+that gap: the live price against the frozen feed, a call for Monday's reopen, every past weekend, and
+what a reopen gap would do to Morpho loans backed by stock tokens.
+
+Read-only for Robinhood Chain (4663): no wallet connection, no keys, no transactions. Every number in
+the UI is labelled **live**, **replay** or **scenario**, and failed reads show as errors — there is no demo data.
+
+## Why it matters (read from the chain, 5 Nov 2026)
+
+| | |
+|---|---|
+| Weekend feed freeze, 18 weekends since 1 Jul | median **52 h**, up to **91.5 h** over a holiday |
+| Trading while frozen, weekend of 24 Oct | **29,713** swaps, about **$9.0M** USDG volume |
+| Borrowed on Morpho against stock tokens | about **$1.71M**, valued at the frozen price all weekend |
+| Largest reopen gap since July | USO **−7.75%** (weekend of 1 Aug) |
+| Last weekend trade called the reopen direction | right in **286 of 341** stock-weekends (decoupled pools left out) |
+
+## What it does
+
+- **Tonight** — for 33 stock tokens, the deepest pool's live price against the frozen feed, the weekend's
+  highest, lowest and latest trades with exact times, and the reopen call (higher, lower or flat).
+- **Replay** — every weekend since 1 Jul with the actual reopen, so each call can be checked.
+- **Positions** — paste a wallet to see its Morpho loans backed by stock tokens, the liquidation price,
+  and the health after a reopen at today's price or at the stock's worst gap since July.
+- [Method and limits](https://lull.up.railway.app/method.html) · [plain-text summary](https://lull.up.railway.app/llms.txt)
+
+## How it was built
+
+Built for Vibeathon 02 (Vibestarter, 2–9 Nov 2026) with Claude Code end to end:
+
+- **Research and verification** — the idea, the on-chain probes (feeds, pools, Morpho markets) and every
+  number above were checked by an agent reading Robinhood Chain directly, before any code was written.
+- **Implementation** — the server, indexer and UI were written by Claude Code in four proof-first slices,
+  each one tested against live chain data before the next.
+- **Independent checks** — each slice's numbers were re-derived by a second agent from raw RPC reads; that
+  caught a block-time estimate (now exact header timestamps) and a hardcoded reopen time that broke when US
+  clocks changed on 1 Nov.
+- **Design** — directions researched from shipped products (Flighty's flight status), then a fixed design
+  system (`LULL_DESIGN.md`) applied and checked at desktop and phone widths.
 
 ## Run
 
+    npm run build && npm start                 # production: one service, API and built UI on $PORT
     cd server && npm install && npm start      # API on :8787, starts the Replay indexer
     cd web && npm install && npm run dev       # UI on :5173, proxies /api to :8787
 
@@ -27,6 +68,7 @@ Behind an HTTPS proxy (e.g. a cloud sandbox), Node's fetch needs `NODE_USE_ENV_P
   over the freeze, Monday reopen, gap. `?symbol=` adds hourly OHLC. `ready: false` with progress until built.
 - `GET /api/positions/:wallet` — Morpho positions with Robinhood-stock collateral: health factor,
   liquidation price, and `scenario` rows for the next reopen (current pool price; worst gap since 1 Jul).
+- `GET /api/stocks` — names, Robinhood logos and Morpho exposure per token. `GET /api/health` — liveness.
 
 ## Method and data notes (measured 4 Nov 2026)
 

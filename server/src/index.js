@@ -9,6 +9,33 @@ import { stocks } from './routes/stocks.js';
 import { startIndexer } from './indexer.js';
 
 const app = express();
+app.disable('x-powered-by');
+
+// Hardening headers. The app loads only its own scripts, Google Fonts and Robinhood's token logos.
+const CSP = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "font-src https://fonts.gstatic.com",
+  "img-src 'self' data: https://cdn.robinhood.com",
+  "connect-src 'self'",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+].join('; ');
+app.use((req, res, next) => {
+  res.set({
+    'Content-Security-Policy': CSP,
+    'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
+    'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'DENY',
+    'Referrer-Policy': 'strict-origin-when-cross-origin',
+    'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=()',
+    'Cross-Origin-Opener-Policy': 'same-origin',
+  });
+  next();
+});
 const wrap = (fn) => (req, res) => Promise.resolve().then(() => fn(req)).then((b) => res.json(b)).catch((e) => {
   // Upstream failures are surfaced as errors, never replaced with demo data.
   res.status(e.status ?? 502).json({ error: e.shortMessage ?? e.message });

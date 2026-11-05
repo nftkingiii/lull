@@ -1,0 +1,51 @@
+# Lull
+
+> Read-only monitor for Robinhood Chain stock tokens while US markets are closed. The tokens trade all weekend, but their Chainlink price feeds freeze from Friday's last update until Sunday 20:00 New York time. Lull shows the live on-chain price against the frozen feed, calls the direction of Monday's reopen, replays every weekend since 1 July 2026, and shows how a reopen gap would move Morpho loans backed by stock tokens.
+
+Live app: https://lull.up.railway.app
+Source: https://github.com/nftkingiii/lull
+Method and limits: https://lull.up.railway.app/method.html
+Built for Vibeathon 02 (Vibestarter), November 2026.
+
+## Who it is for
+
+- Holders of Robinhood stock tokens (AAPL, NVDA, TSLA and 30 more) who trade or watch them on weekends.
+- Borrowers on Morpho who post stock tokens as collateral and are valued at the frozen feed price all weekend.
+- Lenders and risk teams who want to see where the weekend pressure sits before the feed reopens.
+
+## The problem, with numbers read from Robinhood Chain
+
+- Chainlink equity feeds on Robinhood Chain are marked `us_equities_24/5`. Over 18 weekends since 1 July 2026 the freeze lasted a median of 52 hours, and up to 91.5 hours over a holiday weekend.
+- The tokens keep trading in Uniswap v3 pools during the freeze: 29,713 swaps and about $9.0M of USDG volume on the weekend of 24 October 2026; 17,323 swaps and about $4.2M on 31 October.
+- About $1.71M is borrowed on Morpho against stock-token collateral (read 5 November 2026). Those loans are valued at the frozen price until the feed reopens.
+- The largest reopen gap since July was USO at −7.75% on the weekend of 1 August 2026.
+
+## What Lull does
+
+- Tonight: for each of 33 stock tokens with a feed, the deepest USDG pool's live price, its drift from the frozen feed, the weekend's highest, lowest and latest trades with exact times, and a call for the reopen (higher, lower or flat, where flat is within 0.05%).
+- Replay: every weekend since 1 July 2026 with the Friday close, hourly closing trades, single-trade extremes, the last trade before the reopen and the actual reopen. Pools that stopped tracking the stock are flagged as decoupled.
+- Positions: enter any wallet address to read its Morpho Blue positions backed by stock tokens, with health, liquidation price, and two reopen scenarios (today's pool price, and the stock's worst weekend gap since July).
+- Track record: the last weekend trade called the direction of the reopen right in 286 of 341 stock-weekends since July (strict sign, weekends with swaps only, decoupled pools left out).
+
+## How it works
+
+- Chain: Robinhood Chain mainnet, chain ID 4663, RPC https://rpc.mainnet.chain.robinhood.com
+- Feeds: Chainlink proxies from https://reference-data-directory.vercel.app/feeds-robinhood-mainnet.json, read with latestRoundData and getRoundData.
+- Tokens and logos: https://api.robinhood.com/rhj/assets
+- Trades: Uniswap v3 Swap logs (factory 0x1f7d7550b1b028f7571e69a784071f0205fd2efa) in USDG pools. The RPC returns blockTimestamp 0 on logs, so every trade time comes from batched eth_getBlockByNumber headers.
+- Loans: Morpho Blue positions and market parameters, read on-chain; markets matched by Robinhood token address, never by ticker.
+- Expected reopen: Sunday 20:00 America/New_York, converted to UTC with the IANA zone (00:00 UTC in US summer time, 01:00 UTC in winter).
+
+## Public API (JSON, no key)
+
+- GET /api/now: live feed and pool prices for every stock token.
+- GET /api/weekends and /api/weekends?symbol=AAPL: the replay dataset and the upcoming weekend's expected reopen.
+- GET /api/positions/{wallet}: Morpho positions backed by stock tokens for a wallet.
+- GET /api/stocks: names, logos and Morpho exposure per token.
+- GET /api/health
+
+## Limits
+
+- The reopen call is the sign of the last weekend trade against the feed. It is not a forecast model and says nothing about size.
+- Replay uses each token's deepest pool today, because no free archive RPC exposes historical pool balances.
+- Lull gives information, not investment advice. It never asks for a wallet connection or a signature.

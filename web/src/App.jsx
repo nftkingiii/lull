@@ -41,6 +41,14 @@ export default function App() {
       {route.tab === 'tonight' && <Tonight symbol={route.rest[0]} meta={meta} metaError={stocks.error} go={go} />}
       {route.tab === 'replay' && <Replay symbol={route.rest[0]} date={route.rest[1]} meta={meta} go={go} />}
       {route.tab === 'positions' && <Positions wallet={route.rest[0]} meta={meta} go={go} />}
+      <footer className="site-foot">
+        <span>Read-only, no wallet connection or signature</span>
+        <nav aria-label="About Lull">
+          <a href="/method.html">Method</a>
+          <a href="/llms.txt">Plain-text summary</a>
+          <a href="https://github.com/nftkingiii/lull">Source</a>
+        </nav>
+      </footer>
     </div>
   );
 }

@@ -3,14 +3,82 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Lull</title>
-    <meta name="description" content="Where Monday's frozen price feed will reopen, for Robinhood Chain stock tokens." />
+    <title>Lull · Where Robinhood stock tokens reopen after the weekend</title>
+    <meta name="description" content="Robinhood Chain stock tokens trade all weekend while their Chainlink price feeds freeze for about 52 hours. Lull shows the live price against the frozen feed, calls Monday's reopen, and shows which Morpho loans it would hit." />
+    <meta name="theme-color" content="#141415" />
+    <link rel="canonical" href="https://lull.up.railway.app/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Lull" />
+    <meta property="og:url" content="https://lull.up.railway.app/" />
+    <meta property="og:title" content="Lull · Where Robinhood stock tokens reopen after the weekend" />
+    <meta property="og:description" content="The feed sleeps, the market doesn't. Live price against the frozen Chainlink feed, Monday's reopen called, and the Morpho loans it would hit." />
+    <meta property="og:image" content="https://lull.up.railway.app/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Lull · Where Robinhood stock tokens reopen after the weekend" />
+    <meta name="twitter:description" content="The feed sleeps, the market doesn't. Live price against the frozen Chainlink feed, Monday's reopen called, and the Morpho loans it would hit." />
+    <meta name="twitter:image" content="https://lull.up.railway.app/og.png" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="alternate" type="text/plain" href="/llms.txt" title="Lull for language models" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "Lull",
+        "url": "https://lull.up.railway.app/",
+        "applicationCategory": "FinanceApplication",
+        "operatingSystem": "Web",
+        "isAccessibleForFree": true,
+        "description": "Read-only monitor for Robinhood Chain stock tokens while US markets are closed. Compares the live Uniswap v3 price with the frozen Chainlink feed, calls the direction of Monday's reopen, replays every weekend since 1 July 2026, and shows how a reopen gap would move Morpho loans backed by stock tokens.",
+        "featureList": [
+          "Live on-chain price against the frozen Chainlink feed for 33 stock tokens",
+          "Monday reopen call from the last weekend trade, with its record: right in 286 of 341 stock-weekends",
+          "Replay of 18 weekends since 1 July 2026 with exact trade times",
+          "Morpho position check by wallet address, with liquidation price and reopen scenarios"
+        ],
+        "codeRepository": "https://github.com/nftkingiii/lull",
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+      }
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500&family=Geist+Mono:wght@400;500&family=Instrument+Serif&display=swap" rel="stylesheet" />
+    <style>
+      .ssr{max-width:880px;margin:0 auto;padding:48px 32px 64px;font:400 15px/24px Geist,system-ui,sans-serif;color:#a1a1a6}
+      .ssr h1{font:400 48px/1.05 "Instrument Serif",serif;letter-spacing:-.02em;color:#ededed;margin:0 0 16px}
+      .ssr h2{font:500 15px/24px Geist,system-ui,sans-serif;color:#ededed;margin:32px 0 8px}
+      .ssr p,.ssr li{margin:0 0 8px}.ssr ul{padding-left:20px;margin:0}
+      .ssr a{color:#ededed}.ssr .num{font-family:"Geist Mono",monospace;color:#ededed}
+    </style>
   </head>
-  <body>
-    <div id="root"></div>
+  <body style="margin:0;background:#141415">
+    <div id="root">
+      <main class="ssr">
+        <h1>Where Robinhood stock tokens reopen after the weekend</h1>
+        <p>Robinhood's stock tokens trade on Robinhood Chain around the clock, but their Chainlink price feeds follow US market hours. Every weekend the feed freezes, a median of <span class="num">52 hours</span> and up to <span class="num">91.5</span> over a holiday, while the tokens keep trading in Uniswap v3 pools. Lenders such as Morpho keep valuing collateral at the frozen price until the first feed update on Sunday at 20:00 New York time.</p>
+        <p>Lull watches that gap. It is read-only: no wallet connection, no signatures, no keys.</p>
+
+        <h2>What it shows</h2>
+        <ul>
+          <li><b>Tonight.</b> For 33 stock tokens, the live pool price against the frozen feed, how far it has drifted, and what the last trade says about Monday's reopen: higher, lower or flat.</li>
+          <li><b>Replay.</b> Every weekend since 1 July 2026, with the feed's Friday close, the highest, lowest and last trades with exact times, and where the feed actually reopened.</li>
+          <li><b>Positions.</b> Paste a wallet address to see its Morpho loans backed by stock tokens, the liquidation price, and what a reopen at today's price or at the worst recent gap would do to its health.</li>
+        </ul>
+
+        <h2>Why it matters</h2>
+        <ul>
+          <li>On the weekend of 24 October, <span class="num">29,713</span> swaps moved about <span class="num">$9.0M</span> through stock-token pools while every feed was frozen.</li>
+          <li>About <span class="num">$1.71M</span> is borrowed on Morpho against stock tokens, valued at the frozen price all weekend.</li>
+          <li>The largest reopen gap since July was USO at <span class="num">−7.75%</span>, on the weekend of 1 August.</li>
+          <li>The last weekend trade called the direction of the reopen right in <span class="num">286 of 341</span> stock-weekends since July (33 stocks, decoupled pools left out).</li>
+        </ul>
+
+        <h2>How it works</h2>
+        <p>Feed prices come from Chainlink rounds, trades from Uniswap v3 swaps in each token's deepest USDG pool, and loans from Morpho Blue, all read directly from Robinhood Chain (chain 4663). Trade times come from block headers, never estimated. Read the <a href="/method.html">method and its limits</a>, the <a href="/llms.txt">plain-text summary</a>, or the <a href="https://github.com/nftkingiii/lull">source on GitHub</a>.</p>
+        <noscript><p>The live dashboard needs JavaScript. Everything above is also available as plain text at <a href="/llms.txt">/llms.txt</a>.</p></noscript>
+      </main>
+    </div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
