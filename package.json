@@ -1,0 +1,10 @@
+{
+  "name": "lull",
+  "private": true,
+  "description": "Watch Robinhood Chain stock tokens while their price feeds sleep",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "build": "npm ci --prefix server && npm ci --prefix web --include=dev && npm run build --prefix web",
+    "start": "node server/src/index.js"
+  }
+}
