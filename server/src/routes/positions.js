@@ -4,6 +4,10 @@ import { stockUniverse } from '../sources/catalog.js';
 import { latestRound } from '../sources/feeds.js';
 import { usdgPools } from '../sources/pools.js';
 import { getDataset } from '../indexer.js';
+import { HISTORY_START } from '../config.js';
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const since = (() => { const d = new Date(HISTORY_START * 1000); return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`; })();
 
 const pct = (a, b) => ((a - b) / b) * 100;
 
@@ -66,7 +70,7 @@ export async function positions(wallet) {
     const scenarios = [];
     if (feed && pool) scenarios.push(scenario('Next reopen at the current pool price', pool.price, feed.price));
     const wg = worstGap(m.symbol);
-    if (feed && wg) scenarios.push({ ...scenario(`Next reopen with the worst weekend gap since 1 Jul (${wg.saturday})`, feed.price * (1 + wg.gapPct / 100), feed.price), basedOn: 'replay' });
+    if (feed && wg) scenarios.push({ ...scenario(`Next reopen with the worst weekend gap since ${since} (${wg.saturday})`, feed.price * (1 + wg.gapPct / 100), feed.price), basedOn: 'replay' });
 
     return {
       ...base,

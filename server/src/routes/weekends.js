@@ -1,5 +1,6 @@
 import { getDataset, state } from '../indexer.js';
-import { MIN_POOL_USDG } from '../config.js';
+import { MIN_POOL_USDG, HISTORY_START } from '../config.js';
+import { expectedReopen } from '../time.js';
 
 // A pool whose last weekend price is this far from the feed's reopen was not tracking the stock
 // (measured: 316/345 weekends are within 1%, the worst legitimate case 6.2%, decoupled pools 20-85%).
@@ -9,7 +10,7 @@ const pct = (a, b) => (a == null || b == null ? null : ((a - b) / b) * 100);
 const trade = (t, ref) => (t ? { price: t.price, at: iso(t.ts), block: t.block, vsFeedPct: pct(t.price, ref) } : null);
 const iso = (ts) => (ts == null ? null : new Date(ts * 1000).toISOString());
 
-function row(e, nowTs, withHourly) {
+function row(e, nowTs, withHourly, sat) {
   if (!e.close) return { symbol: e.symbol, status: 'no-feed-history', onchain: null, onchainNote: e.onchainNote };
   const { close, reopen, onchain: o } = e;
   const hasRange = o && o.low != null;
@@ -23,6 +24,8 @@ function row(e, nowTs, withHourly) {
     status: reopen ? 'closed' : 'ongoing',
     fridayClose: { price: close.price, at: iso(close.ts) },
     reopen: reopen ? { price: reopen.price, at: iso(reopen.ts), vsFeedPct: pct(reopen.price, close.price) } : null,
+    // Not reopened yet: Sunday 20:00 New York after the close. The real reopen is the first round after it.
+    expectedReopen: reopen ? null : iso(expectedReopen(sat)),
     frozenHours: ((reopen ? reopen.ts : nowTs) - close.ts) / 3600,
     gapPct: reopen ? pct(reopen.price, close.price) : null,
     onchain: o && {
@@ -52,13 +55,22 @@ export function weekends({ symbol } = {}) {
     range: 'Weekend range = low/high of hourly closing pool prices; single-swap extremes are reported separately.',
     decoupled: `A weekend is flagged decoupled when the pool's last price is more than ${DECOUPLED_PCT}% from the reopen; it is shown but left out of summary stats.`,
   };
-  if (!ds) return { label: 'replay', ready: false, indexer, method, weekends: [] };
+  // The next weekend not yet in the list (its Saturday noon hasn't passed), with its expected reopen.
+  const nowTs = ds?.headTs ?? Math.floor(Date.now() / 1000);
+  let nextSat = Math.floor(nowTs / 86400) * 86400;
+  while (new Date(nextSat * 1000).getUTCDay() !== 6 || nextSat + 43_200 <= nowTs) nextSat += 86400;
+  const calendar = {
+    historyStart: iso(HISTORY_START),
+    upcoming: { saturday: iso(nextSat).slice(0, 10), expectedReopen: iso(expectedReopen(nextSat)) },
+  };
+  if (!ds) return { label: 'replay', ready: false, indexer, method, ...calendar, weekends: [] };
   const want = symbol?.toUpperCase();
   return {
-    label: 'replay', ready: true, indexer, method, asOfBlock: ds.head, asOf: iso(ds.headTs),
+    label: 'replay', ready: true, indexer, method, ...calendar, asOfBlock: ds.head, asOf: iso(ds.headTs),
+    stockCount: ds.weekends[0]?.rows.length ?? 0,
     weekends: [...ds.weekends].reverse().map((w) => ({
       saturday: iso(w.sat).slice(0, 10),
-      stocks: w.rows.filter((e) => !want || e.symbol === want).map((e) => row(e, ds.headTs, Boolean(want))),
+      stocks: w.rows.filter((e) => !want || e.symbol === want).map((e) => row(e, ds.headTs, Boolean(want), w.sat)),
     })),
   };
 }

@@ -30,7 +30,7 @@ export default function WeekendCard({ row, live }) {
             Last trade <span className={`num ${tone(lt.vsFeedPct)}`}>{fmtPct(lt.vsFeedPct)}</span> vs frozen feed,{' '}
             {row.reopen
               ? <>feed reopened <span className="num">{fmtPct(row.reopen.vsFeedPct)}</span></>
-              : <>feed reopens <span className="num">Mon 00:00 UTC</span></>}
+              : <>feed expected to reopen <span className="num">{fmtWhen(row.expectedReopen)}</span></>}
           </span>
         )}
         {row.decoupled && <span className="res">Pool decoupled from the stock this weekend</span>}
@@ -42,8 +42,8 @@ export default function WeekendCard({ row, live }) {
         <div className="port"><div className="code">{dayCode(row.fridayClose.at)}</div><div className="t num">{hhmm(row.fridayClose.at)} feed froze</div></div>
         <div className="path" aria-hidden="true" />
         <div className="port end">
-          <div className="code">{row.reopen ? dayCode(row.reopen.at) : 'MON'}</div>
-          <div className="t num">{row.reopen ? `${hhmm(row.reopen.at)} feed reopened` : '00:00 feed reopens'}</div>
+          <div className="code">{dayCode(row.reopen ? row.reopen.at : row.expectedReopen)}</div>
+          <div className="t num">{row.reopen ? `${hhmm(row.reopen.at)} feed reopened` : `${hhmm(row.expectedReopen)} expected reopen`}</div>
         </div>
       </div>
 
@@ -57,7 +57,7 @@ export default function WeekendCard({ row, live }) {
         {lt && <Leg dot="acc" label={row.reopen ? 'Last trade before reopen' : 'Latest trade'} when={fmtWhen(lt.at, { seconds: true })} price={fmtPrice(lt.price)} change={vs(lt)} />}
         {row.reopen
           ? <Leg dot="ring" label="Feed reopened" when={fmtWhen(row.reopen.at, { seconds: true })} price={fmtPrice(row.reopen.price)} change={{ text: `${fmtPct(row.reopen.vsFeedPct)} vs Friday` }} />
-          : <Leg dot="ring" label="Feed reopens" when="Mon 00:00 UTC" price="—" change={{ text: 'not reopened yet' }} />}
+          : <Leg dot="ring" label="Feed expected to reopen" when={`${fmtWhen(row.expectedReopen)}, Sunday 20:00 New York`} price="—" change={{ text: 'first feed round after this' }} />}
       </div>
     </section>
   );

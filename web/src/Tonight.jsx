@@ -3,7 +3,7 @@ import { ArrowRight } from 'lucide-react';
 import { useApi } from './api.js';
 import WeekendCard from './WeekendCard.jsx';
 import { Ticker, Mode, Tag, ErrorState, Loading, Indexing } from './ui.jsx';
-import { fmtPct, fmtUsdCompact, fmtLltv, longDay, hhmm, dayMonth } from './format.js';
+import { fmtPct, fmtUsdCompact, fmtLltv, longDay, hhmm, dayMonth, sinceShort } from './format.js';
 import { direction, tone, called, hitRate } from './calls.js';
 
 const isAddr = (s) => /^0x[0-9a-fA-F]{40}$/.test(s);
@@ -117,7 +117,7 @@ export default function Tonight({ symbol: wanted, meta, metaError, go }) {
             <div className="card-head"><div className="k" id="hr">Weekends where the last trade called the direction</div><Tag>Replay</Tag></div>
             <div className="fig">{hits} of {total}</div>
             <div className="meter" aria-hidden="true"><i style={{ width: `${total ? (hits / total) * 100 : 0}%` }} /></div>
-            <p className="hint">33 stocks since 1 Jul, decoupled pools left out</p>
+            <p className="hint">{list.data.stockCount} stocks since {sinceShort(list.data.historyStart)}, decoupled pools left out</p>
           </section>
         </div>
       </main>

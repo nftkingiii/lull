@@ -1,7 +1,7 @@
 import { useApi } from './api.js';
 import WeekendCard from './WeekendCard.jsx';
 import { Ticker, Mode, Tag, ErrorState, Loading, Indexing } from './ui.jsx';
-import { fmtPct, dowDayMonth, dayMonth } from './format.js';
+import { fmtPct, dowDayMonth, dayMonth, sinceLong } from './format.js';
 import { direction, tone, called } from './calls.js';
 
 function Outcome({ r }) {
@@ -31,7 +31,7 @@ export default function Replay({ symbol: wanted, date, meta, go }) {
       <section className="head">
         <div>
           <Ticker stock={meta[symbol]} symbol={symbol} />
-          <h1>{weeks.length} weekends since 1 July</h1>
+          <h1>{weeks.length} weekends since {sinceLong(detail.data.historyStart)}</h1>
         </div>
         <Mode>Replay of the weekend of {dayMonth(pick.saturday)}</Mode>
       </section>

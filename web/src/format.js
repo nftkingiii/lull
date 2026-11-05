@@ -38,3 +38,8 @@ export const dayCode = (iso) => DAYS[new Date(iso).getUTCDay()].toUpperCase();
 export const longDay = (iso) => LONG_DAYS[new Date(iso).getUTCDay()];
 export const dayMonth = (ymd) => { const d = new Date(`${ymd}T00:00:00Z`); return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`; };
 export const dowDayMonth = (ymd) => { const d = new Date(`${ymd}T00:00:00Z`); return `${DAYS[d.getUTCDay()]} ${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`; };
+
+const LONG_MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+/** History start from the API: "1 July" / "1 Jul". */
+export const sinceLong = (iso) => { const d = new Date(iso); return `${d.getUTCDate()} ${LONG_MONTHS[d.getUTCMonth()]}`; };
+export const sinceShort = (iso) => { const d = new Date(iso); return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`; };
