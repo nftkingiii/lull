@@ -30,7 +30,7 @@ export default function WeekendCard({ row, live }) {
             Last trade <span className={`num ${tone(lt.vsFeedPct)}`}>{fmtPct(lt.vsFeedPct)}</span> vs frozen feed,{' '}
             {row.reopen
               ? <>feed reopened <span className="num">{fmtPct(row.reopen.vsFeedPct)}</span></>
-              : <>feed expected to reopen <span className="num">{fmtWhen(row.expectedReopen)}</span></>}
+              : <>feed expected to reopen <span className="num">{fmtWhen(row.expectedReopen)}</span>{row.reopenOverdue ? ', no round yet' : ''}</>}
           </span>
         )}
         {row.decoupled && <span className="res">Pool decoupled from the stock this weekend</span>}
@@ -39,7 +39,7 @@ export default function WeekendCard({ row, live }) {
       <WeekendChart row={row} live={live} />
 
       <div className="route">
-        <div className="port"><div className="code">{dayCode(row.fridayClose.at)}</div><div className="t num">{hhmm(row.fridayClose.at)} feed froze</div></div>
+        <div className="port"><div className="code">{dayCode(row.fridayClose.at)}</div><div className="t num">{hhmm(row.fridayClose.at)} {row.feedMayUpdateUntil ? 'latest feed update' : 'feed froze'}</div></div>
         <div className="path" aria-hidden="true" />
         <div className="port end">
           <div className="code">{dayCode(row.reopen ? row.reopen.at : row.expectedReopen)}</div>
@@ -48,8 +48,11 @@ export default function WeekendCard({ row, live }) {
       </div>
 
       <div className="legs">
-        <Leg dot="ring" label="Feed froze" when={`${fmtWhen(row.fridayClose.at)}, last Chainlink update`} price={fmtPrice(row.fridayClose.price)}
-          change={{ text: row.reopen ? `frozen ${frozenH} hours` : `frozen ${frozenH} hours so far` }} />
+        {row.feedMayUpdateUntil
+          ? <Leg dot="ring" label="Latest feed update" when={`${fmtWhen(row.fridayClose.at)}, latest Chainlink round`} price={fmtPrice(row.fridayClose.price)}
+              change={{ text: `can still update until ${fmtWhen(row.feedMayUpdateUntil)}` }} />
+          : <Leg dot="ring" label="Feed froze" when={`${fmtWhen(row.fridayClose.at)}, last Chainlink update`} price={fmtPrice(row.fridayClose.price)}
+              change={{ text: row.reopen ? `frozen ${frozenH} hours` : `frozen ${frozenH} hours so far` }} />}
         {o?.highTrade
           ? <Leg label="Highest trade" when={fmtWhen(o.highTrade.at)} price={fmtPrice(o.highTrade.price)} change={vs(o.highTrade)} />
           : <Leg label="Highest trade" when={row.onchainNote ?? 'No weekend trades'} price="—" />}
@@ -57,7 +60,7 @@ export default function WeekendCard({ row, live }) {
         {lt && <Leg dot="acc" label={row.reopen ? 'Last trade before reopen' : 'Latest trade'} when={fmtWhen(lt.at, { seconds: true })} price={fmtPrice(lt.price)} change={vs(lt)} />}
         {row.reopen
           ? <Leg dot="ring" label="Feed reopened" when={fmtWhen(row.reopen.at, { seconds: true })} price={fmtPrice(row.reopen.price)} change={{ text: `${fmtPct(row.reopen.vsFeedPct)} vs Friday` }} />
-          : <Leg dot="ring" label="Feed expected to reopen" when={`${fmtWhen(row.expectedReopen)}, Sunday 20:00 New York`} price="—" change={{ text: 'first feed round after this' }} />}
+          : <Leg dot="ring" label="Feed expected to reopen" when={`${fmtWhen(row.expectedReopen)}, Sunday 20:00 New York`} price="—" change={{ text: row.reopenOverdue ? 'no round yet, later on market holidays' : 'first feed round after this' }} />}
       </div>
     </section>
   );

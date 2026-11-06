@@ -33,7 +33,10 @@ export default function Replay({ symbol: wanted, date, meta, go }) {
           <Ticker stock={meta[symbol]} symbol={symbol} />
           <h1>{weeks.length} weekends since {sinceLong(detail.data.historyStart)}</h1>
         </div>
-        <Mode>Replay of the weekend of {dayMonth(pick.saturday)}</Mode>
+        <div className="mode-wrap">
+          {detail.data.testClock && <Tag>Test clock</Tag>}
+          <Mode>Replay of the weekend of {dayMonth(pick.saturday)}</Mode>
+        </div>
       </section>
 
       <main className="grid">

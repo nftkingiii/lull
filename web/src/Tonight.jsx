@@ -9,9 +9,9 @@ import { direction, tone, called, hitRate } from './calls.js';
 const isAddr = (s) => /^0x[0-9a-fA-F]{40}$/.test(s);
 const SHOW = 8;
 
-/** The weekend Tonight is about: the one still frozen if there is one, otherwise the latest. */
+/** The weekend Tonight is about: always the newest. It appears, live, from Friday 16:00 New York. */
 export function currentWeekend(weekends) {
-  return weekends.find((w) => w.stocks.some((s) => s.status === 'ongoing')) ?? weekends[0];
+  return weekends[0];
 }
 
 function WalletCheck({ go }) {
@@ -72,13 +72,14 @@ export default function Tonight({ symbol: wanted, meta, metaError, go }) {
   if (!list.data.ready) return <><div style={{ height: 24 }} /><Indexing indexer={list.data.indexer} /></>;
 
   const week = currentWeekend(list.data.weekends);
-  const live = week.stocks.some((s) => s.status === 'ongoing');
+  const live = week.live;
   const row = detail.data?.weekends.find((w) => w.saturday === week.saturday)?.stocks[0];
   const { hits, total } = hitRate(list.data.weekends);
   const m = meta[symbol];
 
   let headline = 'Reading the weekend';
   if (row?.reopen) headline = `Reopened ${longDay(row.reopen.at)} at ${hhmm(row.reopen.at)} UTC`;
+  else if (row?.feedMayUpdateUntil) headline = `Feed last updated ${longDay(row.fridayClose.at)} ${hhmm(row.fridayClose.at)} UTC`;
   else if (row?.fridayClose) headline = `Frozen since ${longDay(row.fridayClose.at)} ${hhmm(row.fridayClose.at)} UTC`;
 
   return (
@@ -88,14 +89,17 @@ export default function Tonight({ symbol: wanted, meta, metaError, go }) {
           <Ticker stock={m} symbol={symbol} />
           <h1>{headline}</h1>
         </div>
-        {live ? <Mode live>Live, as of {hhmm(list.data.asOf)} UTC</Mode> : <Mode>Replay of the weekend of {dayMonth(week.saturday)}</Mode>}
+        <div className="mode-wrap">
+          {list.data.testClock && <Tag>Test clock</Tag>}
+          {live ? <Mode live>Live, as of {hhmm(list.data.asOf)} UTC</Mode> : <Mode>Replay of the weekend of {dayMonth(week.saturday)}</Mode>}
+        </div>
       </section>
 
       <main className="grid">
         <div className="stack">
           {detail.error ? <ErrorState error={detail.error} onRetry={detail.reload} />
             : !row ? <Loading>Reading {symbol}</Loading>
-              : row.fridayClose ? <WeekendCard row={row} live={live} />
+              : row.fridayClose ? <WeekendCard row={row} live={row.status === 'ongoing'} />
                 : <div className="card state">{row.onchainNote ?? `No feed history for ${symbol} this weekend`}</div>}
         </div>
 

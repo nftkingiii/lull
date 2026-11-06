@@ -49,7 +49,7 @@ td.r,th.r{text-align:right}
   <p>Robinhood stock tokens are ERC-20s on Robinhood Chain that trade around the clock. Their Chainlink price feeds follow US market hours (<code>us_equities_24/5</code>), so every weekend the feed stops updating while the tokens keep trading. Lull reads both sides directly from the chain and shows the gap.</p>
 
   <h2>1. The frozen feed</h2>
-  <p>For each of the 33 equity feeds in Chainlink's Robinhood Chain directory, Lull walks the feed's rounds with <code>getRoundData</code>. The Friday close is the last round at or before Saturday 12:00 UTC; the reopen is the next round. Over 18 weekends since 1 July 2026 the freeze lasted a median of <span class="num">52 hours</span>, up to <span class="num">91.5</span> over a holiday.</p>
+  <p>For each of the 33 equity feeds in Chainlink's Robinhood Chain directory, Lull walks the feed's rounds with <code>getRoundData</code>. The Friday close is the last round at or before Saturday 12:00 UTC; the reopen is the next round. A weekend shows as live from Friday 16:00 New York and updates every few minutes; until Friday 20:00 New York its close is the latest round so far, because extended-hours rounds can still arrive. Over 18 weekends since 1 July 2026 the freeze lasted a median of <span class="num">52 hours</span>, up to <span class="num">91.5</span> over a holiday.</p>
   <p>The expected reopen is Sunday 20:00 in New York, converted with the IANA time zone, so it is 00:00 UTC in US summer time and 01:00 UTC in winter. The real reopen is the first feed round after it, later on market holidays.</p>
 
   <h2>2. The weekend trades</h2>
@@ -73,7 +73,7 @@ td.r,th.r{text-align:right}
 
   <h2>Limits</h2>
   <ul>
-    <li>Replay uses each token's deepest pool today, because no free archive RPC exposes historical pool balances.</li>
+    <li>Each weekend uses the token's deepest pool when that weekend was first read, and keeps it. No free archive RPC exposes historical pool balances, so older weekends use the deepest pool on the day Lull first indexed them.</li>
     <li>The call says nothing about how big the gap will be, and one thin pool can be wrong.</li>
     <li>Lull is read-only. It never asks you to connect a wallet or sign anything, and it is information, not investment advice.</li>
   </ul>

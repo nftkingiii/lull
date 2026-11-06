@@ -57,22 +57,33 @@ Behind an HTTPS proxy (e.g. a cloud sandbox), Node's fetch needs `NODE_USE_ENV_P
 | `LULL_RPC_URL` | Robinhood public RPC | must serve logs over wide ranges |
 | `LULL_RPC_GAP_MS` | 150 | minimum gap between RPC requests |
 | `LULL_MIN_POOL_USDG` | 100 | pools / swaps below this USDG are treated as empty |
-| `LULL_INDEX_REFRESH_MS` | 600000 | Replay refresh interval |
+| `LULL_INDEX_REFRESH_MS` | 600000 | refresh interval when no weekend is live |
+| `LULL_LIVE_REFRESH_MS` | 120000 | refresh interval while a weekend is live (new blocks only) |
 | `LULL_CACHE_DIR` | `server/.cache` | feed rounds, block lookups, weekend summaries |
 | `LULL_NO_INDEXER` | unset | `1` disables the indexer (Replay then reports not ready) |
+| `LULL_TEST_CLOCK` | unset | `1` enables a pinned test clock for rehearsals (ignored when `NODE_ENV=production`) |
+| `LULL_TEST_NOW` | unset | with the test clock: the instant to pin, e.g. `2026-10-31T15:00:00Z`; `POST /api/_test/clock?at=…` moves it |
 
 ## API
 
 - `GET /api/now` — per stock: deepest USDG pool price, latest feed price, drift %, feed age. `label: live`.
 - `GET /api/weekends[?symbol=X]` — every weekend since 1 Jul: feed Friday close, on-chain low/high/last
   over the freeze, Monday reopen, gap. `?symbol=` adds hourly OHLC. `ready: false` with progress until built.
+  The current weekend is listed, `live: true`, from Friday 16:00 New York; rows that have not reopened carry
+  `expectedReopen`, `reopenOverdue` (no round 15 min after it) and, until Friday 20:00 New York,
+  `feedMayUpdateUntil`. `upcoming` gives the next weekend's start and expected reopen.
 - `GET /api/positions/:wallet` — Morpho positions with Robinhood-stock collateral: health factor,
   liquidation price, and `scenario` rows for the next reopen (current pool price; worst gap since 1 Jul).
 - `GET /api/stocks` — names, Robinhood logos and Morpho exposure per token. `GET /api/health` — liveness.
 
 ## Method and data notes (measured 4 Nov 2026)
 
-- **Friday close / reopen:** last feed round at or before Saturday 12:00 UTC, and the next round.
+- **Friday close / reopen:** last feed round at or before Saturday 12:00 UTC, and the next round. A weekend
+  goes live at Friday 16:00 New York (its close is the latest round so far until Friday 20:00 New York, when
+  extended-hours rounds stop), refreshes every 2 minutes from new blocks only, and each stock flips to
+  closed on its own first reopen round, so one late feed doesn't hold the others.
+- **Pinned pools:** each weekend's pool is chosen once per stock (the deepest USDG pool when the weekend
+  goes live) and saved, so a later liquidity move between near-equal pools can't rewrite a past weekend.
 - **Pool:** deepest USDG pool by `balanceOf`. For Replay, the RPC has no archive state (nor does the
   free drpc endpoint; publicnode needs a token), so historical balances can't be read: Replay uses
   today's deepest pool and drops individual swaps whose in-range virtual USDG (`L·√P`) is below the
