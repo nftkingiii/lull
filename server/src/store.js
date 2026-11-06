@@ -1,5 +1,5 @@
 // Tiny JSON-on-disk store for immutable history (feed rounds, pool logs).
-import { mkdirSync, readFileSync, writeFileSync, renameSync, statSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync, renameSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -14,9 +14,4 @@ export function save(name, value) {
   const path = join(CACHE_DIR, name);
   writeFileSync(path + '.tmp', JSON.stringify(value));
   renameSync(path + '.tmp', path);
-}
-
-/** Last-modified time (ms) of a cached file, or null. */
-export function mtime(name) {
-  try { return statSync(join(CACHE_DIR, name)).mtimeMs; } catch { return null; }
 }

@@ -43,6 +43,7 @@ function row(e, nowTs, withHourly, sat) {
       // Actual weekend trades with exact times from block headers.
       highTrade: trade(o.highTrade, close.price), lowTrade: trade(o.lowTrade, close.price), lastTrade: trade(o.lastTrade, close.price),
       swaps: o.swaps, swapsExcludedThin: o.swapsExcludedThin, usdgVolume: o.usdgVolume,
+      poolChoice: o.poolChoice, // why this pool: weekend volume per candidate
       hourly: withHourly ? o.hourly : undefined, // only with ?symbol=, to keep the list small
     },
     decoupled: lastVsReopenPct != null && Math.abs(lastVsReopenPct) > DECOUPLED_PCT,
@@ -58,7 +59,7 @@ export function weekends({ symbol } = {}) {
   const method = {
     anchor: 'Friday close = last feed round at or before Saturday 12:00 UTC; reopen = the next round.',
     live: 'A weekend is listed, live, from Friday 16:00 New York; until Friday 20:00 New York its close is the latest round so far.',
-    pool: 'Deepest USDG pool today (no free archive RPC exists for historical balances).',
+    pool: 'Per stock and weekend, the USDG pool with the most in-range USDG swap volume between the Friday close and the reopen; ties or no volume fall back to the deepest pool today.',
     thinSwaps: `Swaps whose in-range virtual USDG is below ${MIN_POOL_USDG} are excluded and counted.`,
     range: 'Weekend range = low/high of hourly closing pool prices; single-swap extremes are reported separately.',
     decoupled: `A weekend is flagged decoupled when the pool's last price is more than ${DECOUPLED_PCT}% from the reopen; it is shown but left out of summary stats.`,

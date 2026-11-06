@@ -11,7 +11,7 @@ import { roundHistory } from './sources/rounds.js';
 import { scanSwaps, lastSwapAtOrBefore } from './sources/poollogs.js';
 import { blockAtOrAfter } from './sources/blocks.js';
 import { blockTimestamps } from './sources/blocktime.js';
-import { load, save, mtime } from './store.js';
+import { load, save } from './store.js';
 import { headBlock as clockHead, nowSec } from './clock.js';
 import { weekendStart } from './time.js';
 
@@ -21,7 +21,7 @@ const LIVE_REFRESH_MS = Number(process.env.LULL_LIVE_REFRESH_MS ?? 2 * 60_000);
 const DAY = 86_400;
 const Q96 = 2n ** 96n;
 const usdg = getAddress(USDG);
-const SUMMARY_VERSION = 3; // bump to invalidate cached weekend summaries
+const SUMMARY_VERSION = 4; // bump to invalidate cached weekend summaries (4: pool chosen by weekend volume)
 
 export const state = { running: false, done: 0, total: 0, step: null, error: null, lastBuiltAt: null, head: null };
 let dataset = null;
@@ -128,6 +128,7 @@ export function weekendAccumulator({ pool, token, decimals, closeTs, fromBlock, 
       };
     },
     get before() { return before; },
+    get volume() { return volume; },
   };
 }
 
@@ -140,59 +141,73 @@ async function extendHours(bounds, endTs, headBlock) {
 }
 
 /**
- * The pool a weekend is read from, pinned per (weekend, stock). "Deepest USDG pool" is decided once,
- * when the weekend is first summarised, and saved, so later liquidity moves between near-equal pools
- * can't rewrite a past weekend or switch pools mid-weekend.
+ * The pool a stock's weekend is read from, decided by that weekend's own trading: the USDG pool with
+ * the most in-range USDG swap volume between the Friday close and the reopen. A tie at the top, or no
+ * volume at all, falls back to today's deepest pool. Same answer on every machine, no archive state.
  */
-function weekendPool(day, s, r) {
-  const pinKey = `pin-${day}-${s.symbol}.json`;
-  const pin = load(pinKey, null);
-  if (pin) return s.pools.find((p) => p.pool.toLowerCase() === pin.pool.toLowerCase()) ?? pin;
-  // Summaries written before pinning existed: the earliest one for this stock and weekend wins.
-  if (r.reopen) {
-    const old = s.pools
-      .map((p) => ({ p, key: `wk-${day}-${p.pool.toLowerCase()}.json` }))
-      .map((c) => ({ ...c, at: mtime(c.key), hit: load(c.key, null) }))
-      .filter((c) => c.hit && c.hit.v === SUMMARY_VERSION && c.hit.closeTs === r.close.ts && c.hit.reopenTs === r.reopen.ts)
-      .sort((a, b) => a.at - b.at)[0];
-    if (old) { save(pinKey, { pool: old.p.pool, fee: old.p.fee, token0: old.p.token0 }); return old.p; }
+function pickByVolume(cands, s) {
+  const max = Math.max(0, ...cands.map((c) => c.acc.volume));
+  const top = max > 0 ? cands.filter((c) => c.acc.volume === max) : cands;
+  if (top.length === 1 && max > 0) return { ...top[0], by: 'volume' };
+  const deepest = s.pools.find((p) => !p.empty && top.some((c) => c.pool.pool === p.pool));
+  const c = deepest && top.find((x) => x.pool.pool === deepest.pool);
+  return c ? { ...c, by: max > 0 ? 'volume tie, deepest today' : 'no volume, deepest today' } : null;
+}
+
+/** Open one candidate pool for a window: an accumulator seeded with the pool's last swap before the close. */
+async function openCandidate(pool, r, fromBlock, toBlock, hours, lastSeen, historyBlock) {
+  const acc = weekendAccumulator({ pool, token: r.s.token, decimals: r.s.decimals, closeTs: r.close.ts, fromBlock: Number(fromBlock), toBlock, hours });
+  const seen = lastSeen.get(pool.pool);
+  const floor = seen && seen.block < fromBlock ? seen.block + 1n : historyBlock;
+  acc.seed((await lastSwapAtOrBefore(pool.pool, fromBlock - 1n, floor)) ?? (seen && seen.block < fromBlock ? seen.swap : null));
+  return { pool, acc, scannedTo: fromBlock - 1n, lastSwap: null };
+}
+
+/** Scan new blocks for every candidate and remember where each scan ended for the next weekend. */
+async function scanCandidates(cands, to, lastSeen) {
+  for (const c of cands) {
+    if (to <= c.scannedTo) continue;
+    await scanSwaps(c.pool.pool, c.scannedTo + 1n, to, (x) => { c.acc.add(x); c.lastSwap = x; });
+    c.scannedTo = to;
+    lastSeen.set(c.pool.pool, { block: to, swap: c.lastSwap ?? c.acc.before });
   }
-  if (!s.pool) return null;
-  save(pinKey, { pool: s.pool.pool, fee: s.pool.fee, token0: s.pool.token0 });
-  return s.pool;
+}
+
+/** The chosen candidate's summary, with exact trade times and the volume behind the choice. */
+async function summaryOf(win, cands) {
+  const o = win.acc.result();
+  const trades = [o.highTrade, o.lowTrade, o.lastTrade].filter(Boolean);
+  const ts = await blockTimestamps(trades.map((t) => t.block));
+  for (const t of trades) t.ts = ts.get(t.block);
+  o.poolChoice = { by: win.by, volumes: cands.map((c) => ({ pool: c.pool.pool, fee: c.pool.fee, usdgVolume: c.acc.volume })) };
+  return o;
 }
 
 // Live weekend state per stock, kept between runs so each refresh scans only new blocks.
-const live = new Map(); // symbol -> { pool, closeTs, acc, hours, scannedTo }
+const live = new Map(); // symbol -> { closeTs, hours, cands }
 
-/** Summary of a weekend that has not reopened yet, brought up to the head incrementally. */
-async function liveSummary(r, wp, headBlock, lastSeen, historyBlock) {
-  const pool = wp.pool;
+/**
+ * A weekend that has not reopened yet: every candidate pool brought up to the head incrementally,
+ * and the pool picked by volume so far (it can change until the reopen, then it is fixed).
+ */
+async function liveSummary(r, headBlock, lastSeen, historyBlock) {
   const head = headBlock.number;
   const nowTs = Number(headBlock.timestamp);
   let L = live.get(r.s.symbol);
   // Start over if the Friday close moved (a later extended-hours round) or the test clock went back.
-  if (L && (L.pool !== pool || L.closeTs !== r.close.ts || L.scannedTo > head)) L = null;
+  if (L && (L.closeTs !== r.close.ts || L.cands.some((c) => c.scannedTo > head))) L = null;
   if (!L) {
     const fromBlock = await blockAtOrAfter(r.close.ts, headBlock);
     const hours = await hourBoundaries(r.close.ts, nowTs, fromBlock, headBlock);
-    const acc = weekendAccumulator({ pool: wp, token: r.s.token, decimals: r.s.decimals, closeTs: r.close.ts, fromBlock: Number(fromBlock), toBlock: Infinity, hours });
-    const seen = lastSeen.get(pool);
-    const floor = seen && seen.block < fromBlock ? seen.block + 1n : historyBlock;
-    acc.seed((await lastSwapAtOrBefore(pool, fromBlock - 1n, floor)) ?? (seen && seen.block < fromBlock ? seen.swap : null));
-    L = { pool, closeTs: r.close.ts, acc, hours, scannedTo: fromBlock - 1n };
+    const cands = [];
+    for (const p of r.s.pools) cands.push(await openCandidate(p, r, fromBlock, Infinity, hours, lastSeen, historyBlock));
+    L = { closeTs: r.close.ts, hours, cands };
     live.set(r.s.symbol, L);
   }
-  if (head > L.scannedTo) {
-    await extendHours(L.hours, nowTs, headBlock);
-    await scanSwaps(pool, L.scannedTo + 1n, head, (x) => L.acc.add(x));
-    L.scannedTo = head;
-  }
-  const o = L.acc.result();
-  const trades = [o.highTrade, o.lowTrade, o.lastTrade].filter(Boolean);
-  const ts = await blockTimestamps(trades.map((t) => t.block));
-  for (const t of trades) t.ts = ts.get(t.block);
-  return o;
+  await extendHours(L.hours, nowTs, headBlock);
+  await scanCandidates(L.cands, head, lastSeen);
+  const win = pickByVolume(L.cands, r.s);
+  return win ? summaryOf(win, L.cands) : null;
 }
 
 async function build() {
@@ -224,38 +239,29 @@ async function build() {
     for (const r of rows) {
       state.step = `weekend ${day} ${r.s.symbol}`;
       const entry = { symbol: r.s.symbol, close: r.close, reopen: r.reopen, onchain: null, onchainNote: null };
-      const wp = r.close ? weekendPool(day, r.s, r) : null;
       if (!r.close) entry.onchainNote = 'feed has no round before this weekend';
-      else if (!wp) entry.onchainNote = r.s.poolsFound ? 'every USDG pool for this token is empty today' : 'no USDG pool for this token';
+      else if (!r.s.pools.length) entry.onchainNote = 'no USDG pool for this token';
       else {
-        const key = `wk-${day}-${wp.pool.toLowerCase()}.json`;
+        const key = `wk-${day}-${r.s.symbol}.json`;
         const hit = r.reopen && load(key, null);
         if (hit && hit.v === SUMMARY_VERSION && hit.closeTs === r.close.ts && hit.reopenTs === r.reopen.ts) entry.onchain = hit.summary;
         else if (!r.reopen) {
-          // Live: keep this stock's weekend accumulator between runs and scan only new blocks.
-          entry.onchain = await liveSummary(r, wp, headBlock, lastSeen, historyBlock);
+          // Live: candidates kept between runs, only new blocks scanned.
+          entry.onchain = await liveSummary(r, headBlock, lastSeen, historyBlock);
         } else {
-          live.delete(r.s.symbol); // reopened: the final window is computed once, below, then cached
-          // Each stock gets its own window: from its Friday close to its reopen (or now).
-          const endTs = r.reopen ? r.reopen.ts : nowTs;
+          live.delete(r.s.symbol); // reopened: the final window is computed once, here, then cached
+          // Each stock gets its own window: from its Friday close to its reopen.
           const fromBlock = await blockAtOrAfter(r.close.ts, headBlock);
-          const toBlock = r.reopen ? await blockAtOrAfter(endTs, headBlock) : headBlock.number;
-          const hours = await hourBoundaries(r.close.ts, r.reopen ? endTs : Number(headBlock.timestamp), fromBlock, headBlock);
-          const acc = weekendAccumulator({ pool: wp, token: r.s.token, decimals: r.s.decimals, closeTs: r.close.ts, fromBlock: Number(fromBlock), toBlock: Number(toBlock), hours });
-          // Search back only to where the previous weekend's scan ended, then reuse its last swap.
-          const seen = lastSeen.get(wp.pool);
-          const floor = seen && seen.block < fromBlock ? seen.block + 1n : historyBlock;
-          acc.seed((await lastSwapAtOrBefore(wp.pool, fromBlock - 1n, floor)) ?? (seen && seen.block < fromBlock ? seen.swap : null));
-          let lastScanned = null;
-          await scanSwaps(wp.pool, fromBlock, toBlock, (x) => { acc.add(x); lastScanned = x; });
-          lastSeen.set(wp.pool, { block: toBlock, swap: lastScanned ?? acc.before });
-          entry.onchain = acc.result();
-          const o = entry.onchain;
-          const trades = [o.highTrade, o.lowTrade, o.lastTrade].filter(Boolean);
-          const ts = await blockTimestamps(trades.map((t) => t.block));
-          for (const t of trades) t.ts = ts.get(t.block);
-          if (r.reopen) save(key, { v: SUMMARY_VERSION, closeTs: r.close.ts, reopenTs: r.reopen.ts, summary: entry.onchain });
+          const toBlock = await blockAtOrAfter(r.reopen.ts, headBlock);
+          const hours = await hourBoundaries(r.close.ts, r.reopen.ts, fromBlock, headBlock);
+          const cands = [];
+          for (const p of r.s.pools) cands.push(await openCandidate(p, r, fromBlock, Number(toBlock), hours, lastSeen, historyBlock));
+          await scanCandidates(cands, toBlock, lastSeen);
+          const win = pickByVolume(cands, r.s);
+          entry.onchain = win ? await summaryOf(win, cands) : null;
+          save(key, { v: SUMMARY_VERSION, closeTs: r.close.ts, reopenTs: r.reopen.ts, summary: entry.onchain });
         }
+        if (!entry.onchain) entry.onchainNote = 'no USDG volume this weekend and every USDG pool is empty today';
       }
       out.push(entry);
       state.done++;

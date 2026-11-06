@@ -127,7 +127,7 @@ export default function Tonight({ symbol: wanted, meta, metaError, go }) {
       </main>
 
       <p className="foot">
-        Feed values are Chainlink rounds and trades are Uniswap v3 swaps in the deepest USDG pool, all read on Robinhood Chain; trade times come from block headers.
+        Feed values are Chainlink rounds and trades are Uniswap v3 swaps in the USDG pool with the most volume that weekend, all read on Robinhood Chain; trade times come from block headers.
         Borrowed amounts are read live from Morpho Blue. The chart shows hourly closing trades; the highest and lowest single trades are listed separately.
       </p>
     </>

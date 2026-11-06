@@ -19,7 +19,7 @@ the UI is labelled **live**, **replay** or **scenario**, and failed reads show a
 | Trading while frozen, weekend of 24 Oct | **29,713** swaps, about **$9.0M** USDG volume |
 | Borrowed on Morpho against stock tokens | about **$1.71M**, valued at the frozen price all weekend |
 | Largest reopen gap since July | USO **−7.75%** (weekend of 1 Aug) |
-| Last weekend trade called the reopen direction | right in **286 of 341** stock-weekends (decoupled pools left out) |
+| Last weekend trade called the reopen direction | right in **304 of 371** stock-weekends (decoupled pools left out) |
 
 ## What it does
 
@@ -82,12 +82,13 @@ Behind an HTTPS proxy (e.g. a cloud sandbox), Node's fetch needs `NODE_USE_ENV_P
   goes live at Friday 16:00 New York (its close is the latest round so far until Friday 20:00 New York, when
   extended-hours rounds stop), refreshes every 2 minutes from new blocks only, and each stock flips to
   closed on its own first reopen round, so one late feed doesn't hold the others.
-- **Pinned pools:** each weekend's pool is chosen once per stock (the deepest USDG pool when the weekend
-  goes live) and saved, so a later liquidity move between near-equal pools can't rewrite a past weekend.
-- **Pool:** deepest USDG pool by `balanceOf`. For Replay, the RPC has no archive state (nor does the
-  free drpc endpoint; publicnode needs a token), so historical balances can't be read: Replay uses
-  today's deepest pool and drops individual swaps whose in-range virtual USDG (`L·√P`) is below the
-  floor — an upper bound on usable USDG, so those prices are genuinely thin. Excluded swaps are counted.
+- **Pool per weekend:** each stock's weekend is read from the USDG pool with the most in-range USDG swap
+  volume between the Friday close and the reopen (ties or no volume: the deepest pool today), so every machine
+  gets the same answer; a live weekend can switch pools until it reopens.
+- **Pool:** Tonight's live drift uses the deepest USDG pool by `balanceOf`. The RPC has no archive state
+  (nor does the free drpc endpoint; publicnode needs a token), so weekends pick their pool by that weekend's
+  volume instead (below), and individual swaps whose in-range virtual USDG (`L·√P`) is below the floor are
+  dropped — an upper bound on usable USDG, so those prices are genuinely thin. Excluded swaps are counted.
 - **RPC limits:** ~8–10 eth_calls/s (429 beyond; reads go through Multicall3, which is deployed);
   `eth_getLogs` single-value filters span ≤ 10M blocks, multi-value ≤ 100k, topic-only ≤ 30k; > 10,000
   matches is an error (not truncation) and busy ranges can time out — both are split and retried.

@@ -1,6 +1,6 @@
 // What the last weekend trade "called" for the reopen, and whether it was right.
 // Flat: the last trade sat within FLAT_PCT of the frozen feed (the reference shows −0.01% as flat).
-// The hit rate keeps the original strict-sign rule so it stays comparable with 286 of 341.
+// The hit rate keeps the original strict-sign rule.
 export const FLAT_PCT = 0.05;
 
 export const direction = (pct) => (pct == null ? null : Math.abs(pct) < FLAT_PCT ? 'flat' : pct > 0 ? 'higher' : 'lower');

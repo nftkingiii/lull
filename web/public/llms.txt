@@ -25,7 +25,7 @@ Built for Vibeathon 02 (Vibestarter), November 2026.
 - Tonight: for each of 33 stock tokens with a feed, the deepest USDG pool's live price, its drift from the frozen feed, the weekend's highest, lowest and latest trades with exact times, and a call for the reopen (higher, lower or flat, where flat is within 0.05%).
 - Replay: every weekend since 1 July 2026 with the Friday close, hourly closing trades, single-trade extremes, the last trade before the reopen and the actual reopen. Pools that stopped tracking the stock are flagged as decoupled.
 - Positions: enter any wallet address to read its Morpho Blue positions backed by stock tokens, with health, liquidation price, and two reopen scenarios (today's pool price, and the stock's worst weekend gap since July).
-- Track record: the last weekend trade called the direction of the reopen right in 286 of 341 stock-weekends since July (strict sign, weekends with swaps only, decoupled pools left out).
+- Track record: the last weekend trade called the direction of the reopen right in 304 of 371 stock-weekends since July (strict sign, weekends with swaps only, decoupled pools left out).
 
 ## How it works
 
@@ -47,5 +47,5 @@ Built for Vibeathon 02 (Vibestarter), November 2026.
 ## Limits
 
 - The reopen call is the sign of the last weekend trade against the feed. It is not a forecast model and says nothing about size.
-- Each weekend uses the token's deepest pool when that weekend was first read, and keeps it. No free archive RPC exposes historical pool balances, so older weekends use the deepest pool on the day Lull first indexed them.
+- Each stock's weekend is read from the USDG pool with the most in-range USDG swap volume between the Friday close and the reopen, falling back to today's deepest pool on a tie or no volume; no free archive RPC exposes historical pool balances, so the choice comes from the weekend's own trades.
 - Lull gives information, not investment advice. It never asks for a wallet connection or a signature.

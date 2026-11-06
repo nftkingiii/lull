@@ -53,7 +53,7 @@ td.r,th.r{text-align:right}
   <p>The expected reopen is Sunday 20:00 in New York, converted with the IANA time zone, so it is 00:00 UTC in US summer time and 01:00 UTC in winter. The real reopen is the first feed round after it, later on market holidays.</p>
 
   <h2>2. The weekend trades</h2>
-  <p>Trades are Uniswap v3 <code>Swap</code> logs in each token's deepest USDG pool. Robinhood Chain's RPC returns <code>blockTimestamp</code> as 0 on every log, so each trade's time comes from its block header through batched <code>eth_getBlockByNumber</code> calls. Nothing is estimated from block numbers. Swaps with less than 100 USDG of in-range liquidity are excluded and counted.</p>
+  <p>Trades are Uniswap v3 <code>Swap</code> logs in the USDG pool where the token traded most that weekend. Robinhood Chain's RPC returns <code>blockTimestamp</code> as 0 on every log, so each trade's time comes from its block header through batched <code>eth_getBlockByNumber</code> calls. Nothing is estimated from block numbers. Swaps with less than 100 USDG of in-range liquidity are excluded and counted.</p>
   <p>On the weekend of 24 October 2026 that meant <span class="num">29,713</span> swaps and about <span class="num">$9.0M</span> of USDG volume while every feed was frozen.</p>
 
   <h2>3. The call</h2>
@@ -65,7 +65,7 @@ td.r,th.r{text-align:right}
       <tr><td>NVDA</td><td class="r num">+0.46%</td><td class="r num">+0.36%</td><td class="r">Higher, right</td></tr>
       <tr><td>TSLA</td><td class="r num">−0.01%</td><td class="r num">+0.28%</td><td class="r">Flat, missed</td></tr>
     </table>
-    <p style="margin:16px 0 0">Across all stock-weekends since July with swaps, the last trade's sign matched the reopen's sign in <span class="num">286 of 341</span>. Weekends where the pool stopped tracking the stock (its last price more than 10% from the reopen) are flagged as decoupled and left out.</p>
+    <p style="margin:16px 0 0">Across all stock-weekends since July with swaps, the last trade's sign matched the reopen's sign in <span class="num">304 of 371</span>. Weekends where the pool stopped tracking the stock (its last price more than 10% from the reopen) are flagged as decoupled and left out.</p>
   </div>
 
   <h2>4. The loans</h2>
@@ -73,7 +73,7 @@ td.r,th.r{text-align:right}
 
   <h2>Limits</h2>
   <ul>
-    <li>Each weekend uses the token's deepest pool when that weekend was first read, and keeps it. No free archive RPC exposes historical pool balances, so older weekends use the deepest pool on the day Lull first indexed them.</li>
+    <li>Each stock's weekend is read from the USDG pool with the most in-range USDG swap volume between the Friday close and the reopen, falling back to today's deepest pool on a tie or no volume; no free archive RPC exposes historical pool balances, so the choice comes from the weekend's own trades.</li>
     <li>The call says nothing about how big the gap will be, and one thin pool can be wrong.</li>
     <li>Lull is read-only. It never asks you to connect a wallet or sign anything, and it is information, not investment advice.</li>
   </ul>
