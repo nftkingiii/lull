@@ -6,7 +6,8 @@ import { now } from './routes/now.js';
 import { weekends } from './routes/weekends.js';
 import { positions } from './routes/positions.js';
 import { stocks } from './routes/stocks.js';
-import { startIndexer } from './indexer.js';
+import { startIndexer, refreshNow } from './indexer.js';
+import { TEST_CLOCK, setTestNow, testNow } from './clock.js';
 
 const app = express();
 app.disable('x-powered-by');
@@ -45,7 +46,15 @@ app.get('/api/now', wrap(() => now()));
 app.get('/api/stocks', wrap(() => stocks()));
 app.get('/api/positions/:wallet', wrap((req) => positions(req.params.wallet)));
 app.get('/api/weekends', wrap((req) => weekends({ symbol: req.query.symbol })));
-app.get('/api/health', (req, res) => res.json({ ok: true, commit: process.env.RAILWAY_GIT_COMMIT_SHA ?? null }));
+app.get('/api/health', (req, res) => res.json({ ok: true, commit: process.env.RAILWAY_GIT_COMMIT_SHA ?? null, testClock: testNow() }));
+// Rehearsal hook: move the pinned clock and rebuild. Exists only with LULL_TEST_CLOCK=1 outside production.
+if (TEST_CLOCK) {
+  app.post('/api/_test/clock', wrap(async (req) => {
+    setTestNow(String(req.query.at ?? ''));
+    await refreshNow();
+    return { testClock: testNow() };
+  }));
+}
 app.use('/api', (req, res) => res.status(404).json({ error: 'not found' }));
 
 // In production one service serves both: the built web app, with the SPA's index.html as fallback.

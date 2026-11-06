@@ -11,9 +11,13 @@ import { roundHistory } from './sources/rounds.js';
 import { scanSwaps, lastSwapAtOrBefore } from './sources/poollogs.js';
 import { blockAtOrAfter } from './sources/blocks.js';
 import { blockTimestamps } from './sources/blocktime.js';
-import { load, save } from './store.js';
+import { load, save, mtime } from './store.js';
+import { headBlock as clockHead, nowSec } from './clock.js';
+import { weekendStart } from './time.js';
 
 const REFRESH_MS = Number(process.env.LULL_INDEX_REFRESH_MS ?? 10 * 60_000);
+// While a weekend is live, the latest trade, drift and call refresh this often (new blocks only).
+const LIVE_REFRESH_MS = Number(process.env.LULL_LIVE_REFRESH_MS ?? 2 * 60_000);
 const DAY = 86_400;
 const Q96 = 2n ** 96n;
 const usdg = getAddress(USDG);
@@ -23,12 +27,16 @@ export const state = { running: false, done: 0, total: 0, step: null, error: nul
 let dataset = null;
 export const getDataset = () => dataset;
 
-/** Saturdays (00:00 UTC) from the first one on/after HISTORY_START whose noon has passed. */
+/**
+ * Saturdays (00:00 UTC) from the first one on/after HISTORY_START whose weekend has started:
+ * from Friday 16:00 New York (the regular close), so the current weekend is live as soon as the
+ * feeds start freezing rather than at Saturday noon.
+ */
 export function saturdays(until) {
   const out = [];
   const first = new Date(HISTORY_START * 1000);
   first.setUTCDate(first.getUTCDate() + ((6 - first.getUTCDay() + 7) % 7));
-  for (let t = first.getTime() / 1000; t + DAY / 2 <= until; t += 7 * DAY) out.push(t);
+  for (let t = first.getTime() / 1000; weekendStart(t) <= until; t += 7 * DAY) out.push(t);
   return out;
 }
 
@@ -123,8 +131,72 @@ export function weekendAccumulator({ pool, token, decimals, closeTs, fromBlock, 
   };
 }
 
+/** Append exact hour boundaries up to `endTs` (new hours that passed since the last run). */
+async function extendHours(bounds, endTs, headBlock) {
+  for (let h = bounds.at(-1)[1] + 3600; h < endTs; h += 3600) {
+    const [pb, pts] = bounds.at(-1);
+    bounds.push([Number(await blockAtOrAfter(h, headBlock, { block: pb - 1, ts: Math.max(pts, h - 3600) - 1 })), h]);
+  }
+}
+
+/**
+ * The pool a weekend is read from, pinned per (weekend, stock). "Deepest USDG pool" is decided once,
+ * when the weekend is first summarised, and saved, so later liquidity moves between near-equal pools
+ * can't rewrite a past weekend or switch pools mid-weekend.
+ */
+function weekendPool(day, s, r) {
+  const pinKey = `pin-${day}-${s.symbol}.json`;
+  const pin = load(pinKey, null);
+  if (pin) return s.pools.find((p) => p.pool.toLowerCase() === pin.pool.toLowerCase()) ?? pin;
+  // Summaries written before pinning existed: the earliest one for this stock and weekend wins.
+  if (r.reopen) {
+    const old = s.pools
+      .map((p) => ({ p, key: `wk-${day}-${p.pool.toLowerCase()}.json` }))
+      .map((c) => ({ ...c, at: mtime(c.key), hit: load(c.key, null) }))
+      .filter((c) => c.hit && c.hit.v === SUMMARY_VERSION && c.hit.closeTs === r.close.ts && c.hit.reopenTs === r.reopen.ts)
+      .sort((a, b) => a.at - b.at)[0];
+    if (old) { save(pinKey, { pool: old.p.pool, fee: old.p.fee, token0: old.p.token0 }); return old.p; }
+  }
+  if (!s.pool) return null;
+  save(pinKey, { pool: s.pool.pool, fee: s.pool.fee, token0: s.pool.token0 });
+  return s.pool;
+}
+
+// Live weekend state per stock, kept between runs so each refresh scans only new blocks.
+const live = new Map(); // symbol -> { pool, closeTs, acc, hours, scannedTo }
+
+/** Summary of a weekend that has not reopened yet, brought up to the head incrementally. */
+async function liveSummary(r, wp, headBlock, lastSeen, historyBlock) {
+  const pool = wp.pool;
+  const head = headBlock.number;
+  const nowTs = Number(headBlock.timestamp);
+  let L = live.get(r.s.symbol);
+  // Start over if the Friday close moved (a later extended-hours round) or the test clock went back.
+  if (L && (L.pool !== pool || L.closeTs !== r.close.ts || L.scannedTo > head)) L = null;
+  if (!L) {
+    const fromBlock = await blockAtOrAfter(r.close.ts, headBlock);
+    const hours = await hourBoundaries(r.close.ts, nowTs, fromBlock, headBlock);
+    const acc = weekendAccumulator({ pool: wp, token: r.s.token, decimals: r.s.decimals, closeTs: r.close.ts, fromBlock: Number(fromBlock), toBlock: Infinity, hours });
+    const seen = lastSeen.get(pool);
+    const floor = seen && seen.block < fromBlock ? seen.block + 1n : historyBlock;
+    acc.seed((await lastSwapAtOrBefore(pool, fromBlock - 1n, floor)) ?? (seen && seen.block < fromBlock ? seen.swap : null));
+    L = { pool, closeTs: r.close.ts, acc, hours, scannedTo: fromBlock - 1n };
+    live.set(r.s.symbol, L);
+  }
+  if (head > L.scannedTo) {
+    await extendHours(L.hours, nowTs, headBlock);
+    await scanSwaps(pool, L.scannedTo + 1n, head, (x) => L.acc.add(x));
+    L.scannedTo = head;
+  }
+  const o = L.acc.result();
+  const trades = [o.highTrade, o.lowTrade, o.lastTrade].filter(Boolean);
+  const ts = await blockTimestamps(trades.map((t) => t.block));
+  for (const t of trades) t.ts = ts.get(t.block);
+  return o;
+}
+
 async function build() {
-  const headBlock = await client.getBlock();
+  const headBlock = await clockHead();
   const nowTs = Number(headBlock.timestamp);
   const historyBlock = await blockAtOrAfter(HISTORY_START, headBlock);
   const { matched } = await stockUniverse();
@@ -135,11 +207,12 @@ async function build() {
   const stocks = [];
   for (const m of matched) {
     state.step = `rounds ${m.symbol}`;
-    const rounds = await roundHistory(m.feed.proxyAddress);
+    // Only rounds that existed at the head (matters when the test clock pins "now" in the past).
+    const rounds = (await roundHistory(m.feed.proxyAddress)).filter((r) => r.ts <= nowTs);
     const pools = await usdgPools(m.token.address, m.token.decimals);
     const pool = pools.find((p) => !p.empty) ?? null;
     state.done++;
-    stocks.push({ symbol: m.symbol, token: m.token.address, decimals: m.token.decimals, feed: m.feed.proxyAddress, rounds, pool, poolsFound: pools.length });
+    stocks.push({ symbol: m.symbol, token: m.token.address, decimals: m.token.decimals, feed: m.feed.proxyAddress, rounds, pool, pools, poolsFound: pools.length });
   }
 
   const weekends = [];
@@ -151,26 +224,31 @@ async function build() {
     for (const r of rows) {
       state.step = `weekend ${day} ${r.s.symbol}`;
       const entry = { symbol: r.s.symbol, close: r.close, reopen: r.reopen, onchain: null, onchainNote: null };
+      const wp = r.close ? weekendPool(day, r.s, r) : null;
       if (!r.close) entry.onchainNote = 'feed has no round before this weekend';
-      else if (!r.s.pool) entry.onchainNote = r.s.poolsFound ? 'every USDG pool for this token is empty today' : 'no USDG pool for this token';
+      else if (!wp) entry.onchainNote = r.s.poolsFound ? 'every USDG pool for this token is empty today' : 'no USDG pool for this token';
       else {
-        const key = `wk-${day}-${r.s.pool.pool.toLowerCase()}.json`;
+        const key = `wk-${day}-${wp.pool.toLowerCase()}.json`;
         const hit = r.reopen && load(key, null);
         if (hit && hit.v === SUMMARY_VERSION && hit.closeTs === r.close.ts && hit.reopenTs === r.reopen.ts) entry.onchain = hit.summary;
-        else {
+        else if (!r.reopen) {
+          // Live: keep this stock's weekend accumulator between runs and scan only new blocks.
+          entry.onchain = await liveSummary(r, wp, headBlock, lastSeen, historyBlock);
+        } else {
+          live.delete(r.s.symbol); // reopened: the final window is computed once, below, then cached
           // Each stock gets its own window: from its Friday close to its reopen (or now).
           const endTs = r.reopen ? r.reopen.ts : nowTs;
           const fromBlock = await blockAtOrAfter(r.close.ts, headBlock);
           const toBlock = r.reopen ? await blockAtOrAfter(endTs, headBlock) : headBlock.number;
           const hours = await hourBoundaries(r.close.ts, r.reopen ? endTs : Number(headBlock.timestamp), fromBlock, headBlock);
-          const acc = weekendAccumulator({ pool: r.s.pool, token: r.s.token, decimals: r.s.decimals, closeTs: r.close.ts, fromBlock: Number(fromBlock), toBlock: Number(toBlock), hours });
+          const acc = weekendAccumulator({ pool: wp, token: r.s.token, decimals: r.s.decimals, closeTs: r.close.ts, fromBlock: Number(fromBlock), toBlock: Number(toBlock), hours });
           // Search back only to where the previous weekend's scan ended, then reuse its last swap.
-          const seen = lastSeen.get(r.s.pool.pool);
+          const seen = lastSeen.get(wp.pool);
           const floor = seen && seen.block < fromBlock ? seen.block + 1n : historyBlock;
-          acc.seed((await lastSwapAtOrBefore(r.s.pool.pool, fromBlock - 1n, floor)) ?? (seen && seen.block < fromBlock ? seen.swap : null));
+          acc.seed((await lastSwapAtOrBefore(wp.pool, fromBlock - 1n, floor)) ?? (seen && seen.block < fromBlock ? seen.swap : null));
           let lastScanned = null;
-          await scanSwaps(r.s.pool.pool, fromBlock, toBlock, (x) => { acc.add(x); lastScanned = x; });
-          lastSeen.set(r.s.pool.pool, { block: toBlock, swap: lastScanned ?? acc.before });
+          await scanSwaps(wp.pool, fromBlock, toBlock, (x) => { acc.add(x); lastScanned = x; });
+          lastSeen.set(wp.pool, { block: toBlock, swap: lastScanned ?? acc.before });
           entry.onchain = acc.result();
           const o = entry.onchain;
           const trades = [o.highTrade, o.lowTrade, o.lastTrade].filter(Boolean);
@@ -204,7 +282,31 @@ export async function runIndexer() {
   }
 }
 
+let timer = null;
+let current = null;
+
+/** Run now (or wait for the run in progress, then run again so the result reflects the latest head). */
+export async function refreshNow() {
+  if (current) await current;
+  current = runIndexer().finally(() => { current = null; });
+  await current;
+  schedule();
+}
+
+/** Next run: every LIVE_REFRESH_MS while a weekend is live, else REFRESH_MS, and always at the next weekend's start. */
+function schedule() {
+  clearTimeout(timer);
+  const newest = dataset?.weekends.at(-1);
+  const isLive = newest?.rows.some((r) => r.close && !r.reopen);
+  let wait = isLive ? LIVE_REFRESH_MS : REFRESH_MS;
+  const now = nowSec();
+  let sat = Math.floor(now / DAY) * DAY;
+  while (new Date(sat * 1000).getUTCDay() !== 6 || weekendStart(sat) <= now) sat += DAY;
+  wait = Math.min(wait, (weekendStart(sat) - now) * 1000 + 5_000);
+  timer = setTimeout(() => refreshNow().catch(() => {}), Math.max(wait, 5_000));
+  timer.unref?.();
+}
+
 export function startIndexer() {
-  runIndexer();
-  setInterval(runIndexer, REFRESH_MS).unref();
+  refreshNow().catch(() => {});
 }

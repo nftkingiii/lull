@@ -29,3 +29,13 @@ export function expectedReopen(satTs) {
   const sun = new Date((satTs + 86_400) * 1000);
   return nyWallToUtc(sun.getUTCFullYear(), sun.getUTCMonth(), sun.getUTCDate(), 20) / 1000;
 }
+
+/** Friday of the weekend whose Saturday is `satTs`, at a New York wall-clock hour, in unix seconds. */
+function fridayNy(satTs, hour) {
+  const fri = new Date((satTs - 86_400) * 1000);
+  return nyWallToUtc(fri.getUTCFullYear(), fri.getUTCMonth(), fri.getUTCDate(), hour) / 1000;
+}
+/** The weekend starts at Friday's regular close, 16:00 New York (21:00 UTC in winter). */
+export const weekendStart = (satTs) => fridayNy(satTs, 16);
+/** Feeds can still post extended-hours rounds until Friday 20:00 New York. */
+export const feedsSettle = (satTs) => fridayNy(satTs, 20);
