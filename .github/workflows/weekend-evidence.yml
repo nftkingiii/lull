@@ -1,0 +1,85 @@
+# Captures the live site through the weekend of 7-8 Nov 2026: screenshots of Tonight, Replay and a
+# phone view, plus the API responses behind them, committed to the `evidence` branch by time.
+# Runs every two hours from the Friday close to the Monday reopen, and around both moments.
+name: Weekend evidence
+
+on:
+  schedule:
+    - cron: '0 */2 6-9 11 *'   # every two hours, 6-9 Nov (UTC); the window check below trims it
+    - cron: '30 21 6 11 *'     # Fri 21:30, just after the 16:00 New York close
+    - cron: '40 0 9 11 *'      # Mon 00:40, before the expected 01:00 reopen
+    - cron: '20 1 9 11 *'      # Mon 01:20, after the reopen
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Capture even outside the weekend window
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: weekend-evidence
+  cancel-in-progress: false
+
+env:
+  SITE: https://lull.up.railway.app
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check the weekend window
+        id: window
+        run: |
+          now=$(date -u +%s)
+          start=$(date -u -d '2026-11-06T18:00:00Z' +%s)
+          end=$(date -u -d '2026-11-09T06:00:00Z' +%s)
+          if [ "${{ inputs.force }}" = "true" ] || { [ "$now" -ge "$start" ] && [ "$now" -le "$end" ]; }; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Outside the capture window, skipping."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check out the evidence branch
+        if: steps.window.outputs.run == 'true'
+        run: |
+          git init -q evidence && cd evidence
+          git remote add origin "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git"
+          if git ls-remote --exit-code --heads origin evidence >/dev/null; then
+            git fetch -q --depth 1 origin evidence && git checkout -q -b evidence FETCH_HEAD
+          else
+            git checkout -q --orphan evidence
+            printf '# Lull weekend evidence\n\nScreenshots and API responses of https://lull.up.railway.app, captured by `.github/workflows/weekend-evidence.yml` on main. Folder names are capture times in UTC.\n' > README.md
+          fi
+
+      - name: Install Chromium
+        if: steps.window.outputs.run == 'true'
+        run: npx -y playwright@1.48.2 install --with-deps chromium
+
+      - name: Capture
+        if: steps.window.outputs.run == 'true'
+        working-directory: evidence
+        run: |
+          stamp=$(date -u +%Y-%m-%dT%H%MZ)
+          dir="captures/$stamp"; mkdir -p "$dir"
+          shot() { npx -y playwright@1.48.2 screenshot --browser chromium --viewport-size="$1" --wait-for-timeout=20000 --full-page "$SITE/$2" "$dir/$3" || echo "screenshot failed: $3" >> "$dir/errors.txt"; }
+          shot 1440,900 '' tonight-desktop.png
+          shot 390,844 '' tonight-phone.png
+          shot 1440,900 '#replay' replay-desktop.png
+          for p in health now stocks; do curl -s -m 60 "$SITE/api/$p" -o "$dir/api-$p.json" || echo "api failed: $p" >> "$dir/errors.txt"; done
+          for s in AAPL NVDA TSLA; do curl -s -m 60 "$SITE/api/weekends?symbol=$s" -o "$dir/api-weekends-$s.json" || echo "api failed: weekends $s" >> "$dir/errors.txt"; done
+          echo "$stamp" > "$dir/captured-at.txt"
+
+      - name: Commit
+        if: steps.window.outputs.run == 'true'
+        working-directory: evidence
+        run: |
+          git config user.name "nftking"
+          git config user.email "112104786+nftkingiii@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Weekend capture $(date -u +%Y-%m-%dT%H:%MZ)"
+          for i in 1 2 3; do git push -q origin evidence && break; git pull -q --rebase origin evidence; done
