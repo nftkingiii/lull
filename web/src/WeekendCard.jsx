@@ -27,7 +27,7 @@ export default function WeekendCard({ row, live }) {
         <Call pct={lt?.vsFeedPct} />
         {lt && (
           <span className="res">
-            Last trade <span className={`num ${tone(lt.vsFeedPct)}`}>{fmtPct(lt.vsFeedPct)}</span> vs frozen feed,{' '}
+            Last trade <span className={`num ${tone(lt.vsFeedPct)}`}>{fmtPct(lt.vsFeedPct)}</span> vs {row.feedMayUpdateUntil ? 'latest' : 'frozen'} feed,{' '}
             {row.reopen
               ? <>feed reopened <span className="num">{fmtPct(row.reopen.vsFeedPct)}</span></>
               : <>feed expected to reopen <span className="num">{fmtWhen(row.expectedReopen)}</span>{row.reopenOverdue ? ', no round yet' : ''}</>}
